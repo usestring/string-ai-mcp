@@ -1,0 +1,25 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "ai.usestring/web-access",
+  "description": "The most accurate web access API. Stop getting blocked.",
+  "repository": {
+    "url": "https://github.com/usestring/string-ai-mcp",
+    "source": "github"
+  },
+  "websiteUrl": "https://usestring.ai",
+  "version": "1.2.1",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://mcp.usestring.ai/v1/mcp",
+      "headers": [
+        {
+          "name": "Authorization",
+          "description": "Bearer <your String API key>",
+          "isRequired": true,
+          "isSecret": true
+        }
+      ]
+    }
+  ]
+}

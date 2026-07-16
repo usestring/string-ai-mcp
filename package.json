@@ -1,6 +1,7 @@
 {
   "name": "@usestring/mcp",
-  "version": "1.2.0",
+  "mcpName": "ai.usestring/web-access",
+  "version": "1.2.1",
   "publishConfig": {
     "access": "public"
   },
