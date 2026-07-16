@@ -1,0 +1,19 @@
+{
+	"inputs": [
+		{
+			"type": "promptString",
+			"id": "stringAiKey",
+			"description": "String AI API Key",
+			"password": true
+		}
+	],
+	"servers": {
+		"string-ai-web-access": {
+			"command": "npx",
+			"args": ["-y", "@usestring/mcp"],
+			"env": {
+				"STRING_AI_API_KEY": "${input:stringAiKey}"
+			}
+		}
+	}
+}

@@ -1,0 +1,48 @@
+{
+  "name": "@usestring/mcp",
+  "version": "1.2.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "description": "Official String AI Web Access MCP Server – fetch and search the web via the String AI API from any MCP client",
+  "type": "module",
+  "bin": {
+    "string-ai-mcp": "build/index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node build/index.js",
+    "prepublishOnly": "npm run build"
+  },
+  "files": [
+    "build"
+  ],
+  "keywords": [
+    "mcp",
+    "string-ai",
+    "web-scraping",
+    "web-access",
+    "model-context-protocol"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/usestring/string-ai-mcp.git"
+  },
+  "homepage": "https://github.com/usestring/string-ai-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/usestring/string-ai-mcp/issues"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.8.0"
+  }
+}
