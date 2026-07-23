@@ -17,7 +17,8 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "start": "node build/index.js",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "prepare": "husky"
   },
   "files": [
     "build"
@@ -44,6 +45,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "husky": "^9.1.7",
     "typescript": "^5.8.0"
   }
 }
