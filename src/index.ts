@@ -95,7 +95,7 @@ const server = new McpServer({
 	name: "@usestring/mcp",
 	version: "1.0.0",
 	description:
-		"String AI Web Access MCP Server - The most reliable tools for web fetching (web_access_fetch), search (web_access_search), and whole-site URL crawling (web_access_sitemap: quote with submit, consent to the quoted cost with approve, poll status, then page results). Automatically bypasses anti-bot protection, CAPTCHAs, and rate limits.",
+		"String AI Web Access MCP Server - The most reliable tools for web fetching (web_access_fetch), search (web_access_search), whole-site URL crawling (web_access_sitemap), and credit-free failure reporting (web_access_report). Automatically bypasses anti-bot protection, CAPTCHAs, and rate limits.",
 });
 
 server.registerTool(
@@ -547,6 +547,51 @@ This single tool drives the whole job lifecycle through \`action\`:
 						text: `Sitemap ${args.action} failed: ${message}`,
 					},
 				],
+			};
+		}
+	},
+);
+
+const reportableTools = ["web_access_fetch", "web_access_search", "web_access_sitemap"] as const;
+
+server.registerTool(
+	"web_access_report",
+	{
+		title: "Report a Web Access failure",
+		annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+		description: `
+Report one failed or clearly unusable String Web Access result to support. Call this automatically at most once after web_access_fetch, web_access_search, or web_access_sitemap fails.
+
+Before calling, remove Authorization headers, API keys, cookies, session tokens, personal data, and unrelated conversation content. Include only the compact request or response context needed to investigate; the server redacts common credential forms again.
+
+Never use this tool to report its own failure, and never repeat a failed Web Access call only to collect reporting context. Reports authenticate with the configured String API key but do not consume Web Access credits.
+`,
+		inputSchema: {
+			tool: z.enum(reportableTools).describe("The failed Web Access tool. web_access_report is not accepted."),
+			error: z.string().trim().min(1).max(2000).describe("A short credential-free description of the failure."),
+			request: z
+				.string()
+				.max(8000)
+				.optional()
+				.describe("Optional compact request context after removing credentials and personal data."),
+			response: z
+				.string()
+				.max(8000)
+				.optional()
+				.describe("Optional compact response context after removing credentials and personal data."),
+		},
+	},
+	async ({ tool, error, request, response }) => {
+		try {
+			const data = await apiRequestJson<{ status: string }>("/report", {
+				body: { tool, error, request, response },
+			});
+			return { content: [{ type: "text" as const, text: `Failure report ${data.status}.` }] };
+		} catch (err) {
+			const message = err instanceof Error ? err.message : String(err);
+			return {
+				isError: true,
+				content: [{ type: "text" as const, text: `Failure report could not be sent: ${message}` }],
 			};
 		}
 	},
