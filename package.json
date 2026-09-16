@@ -5,7 +5,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "description": "Official String AI Web Access MCP Server – fetch and search the web via the String AI API from any MCP client",
+  "description": "Official String Web Access MCP server — search the web, fetch or write to any URL, and map a site's URLs as clean, LLM-ready Markdown, with anti-bot handling, CAPTCHAs and JS rendering server-side.",
   "type": "module",
   "bin": {
     "string-ai-mcp": "build/index.js"
@@ -28,7 +28,20 @@
     "string-ai",
     "web-scraping",
     "web-access",
-    "model-context-protocol"
+    "model-context-protocol",
+    "mcp-server",
+    "web-search",
+    "markdown",
+    "anti-bot",
+    "captcha",
+    "proxy",
+    "crawler",
+    "data-extraction",
+    "llm",
+    "ai-agents",
+    "claude",
+    "cursor",
+    "unblocker"
   ],
   "license": "MIT",
   "repository": {

@@ -1,8 +1,11 @@
 # String AI Web Access MCP Server
 
 The official [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server for
-[String AI](https://usestring.ai)'s Web Access API. Connect any MCP-compatible client —
-VS Code, Cursor, Windsurf, Claude Desktop, and more — to String AI's powerful web access capabilities.
+[String AI](https://usestring.ai)'s Web Access API. Search the web, fetch any URL or send it a
+write request, and map a site's URLs — all returned as clean, LLM-ready Markdown. Proxy rotation,
+anti-bot handling, CAPTCHA solving and JavaScript rendering happen server-side, so the agent gets
+the page instead of a block screen. Connect any MCP-compatible client — VS Code, Cursor,
+Windsurf, Claude Desktop, and more.
 
 ## Tools
 
