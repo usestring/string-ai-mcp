@@ -1,13 +1,33 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "ai.usestring/web-access",
-  "description": "The most accurate web access API. Stop getting blocked.",
+  "title": "String Web Access",
+  "description": "Search the web, fetch any URL and map a site — clean Markdown, past anti-bot blocks.",
   "repository": {
     "url": "https://github.com/usestring/string-ai-mcp",
     "source": "github"
   },
   "websiteUrl": "https://usestring.ai",
   "version": "1.2.3",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "@usestring/mcp",
+      "version": "1.2.3",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "STRING_AI_API_KEY",
+          "description": "Your String API key (get one at portal.usestring.ai)",
+          "isRequired": true,
+          "isSecret": true
+        }
+      ]
+    }
+  ],
   "remotes": [
     {
       "type": "streamable-http",
