@@ -1,7 +1,8 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "ai.usestring/web-access",
-  "description": "The most accurate web access API. Stop getting blocked.",
+  "title": "String Web Access",
+  "description": "Search the web, fetch any URL and map a site — clean Markdown, past anti-bot blocks.",
   "repository": {
     "url": "https://github.com/usestring/string-ai-mcp",
     "source": "github"
