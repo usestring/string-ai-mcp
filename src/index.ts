@@ -289,7 +289,7 @@ Search the public web for a query and get ranked organic results back, plus what
 - \`overviews\` — Google's AI overviews: the first entry with no topic is the query's own summary, entries with a topic and question are the "Things to know" tabs, declined: true marks a frame Google did not fill. Each has text and the cited sources as { title, url } — fetch those to verify a claim.
 - \`peopleAlsoAsk\` (questions only; answers are not on the page), \`relatedSearches\`, \`answers\` (localTime, currency, unitConversion, weather, translation, sports or flights), \`spelling\` (substituted or suggested correction).
 - \`ads\`, \`videos\`, \`shortVideos\`, \`discussions\`, \`images\`, \`sitelinks\` — each entry with position, title and url.
-- \`paging\` — { pages, complete }, only when searchCount was sent.
+- \`paging\` — { pages, complete }, only when searchCount was sent. pages is how many results pages answered, each billed as one search. complete: false means the search was cut short (a later page could not be fetched, or the time budget ran out before searchCount) and results holds what was collected; fewer results with complete: true means Google had no more, the ten-page cap was reached, or the first page carried no organic results (a local pack or knowledge panel alone is not paged). Surfaces describe the first page only; positions run on across pages.
 
 A snippet is not the page, and an overview is not a source. To read a result, call web_access_fetch on its URL before answering from it.
 `,
