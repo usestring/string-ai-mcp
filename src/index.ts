@@ -23,6 +23,19 @@ interface ApiErrorBody {
 	// Sitemap error envelopes carry the job status (e.g. the 409 partial_state
 	// body), which handlers need to distinguish repairable states from failures.
 	status?: string;
+	// /search answers a rejected body with zod's flattened error: an unknown key
+	// lands in formErrors, a bad value under its field. Without it the caller
+	// sees "Invalid request" and nothing else.
+	details?: { formErrors?: string[]; fieldErrors?: Record<string, string[]> };
+}
+
+function describeApiError(body: ApiErrorBody, fallback: string): string {
+	const head = body.error ?? body.message ?? body.reason ?? fallback;
+	const details = [
+		...(body.details?.formErrors ?? []),
+		...Object.entries(body.details?.fieldErrors ?? {}).map(([field, messages]) => `${field}: ${messages.join("; ")}`),
+	];
+	return details.length > 0 ? `${head}: ${details.join(", ")}` : head;
 }
 
 class ApiError extends Error {
@@ -61,7 +74,7 @@ async function apiFetch(path: string, { method = "POST", query, body }: ApiReque
 		let errBody: ApiErrorBody = {};
 		try {
 			errBody = (await res.json()) as ApiErrorBody;
-			detail = errBody.error ?? errBody.message ?? errBody.reason ?? detail;
+			detail = describeApiError(errBody, detail);
 		} catch {
 			// ignore parse errors on the error body
 		}
