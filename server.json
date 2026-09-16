@@ -8,7 +8,26 @@
     "source": "github"
   },
   "websiteUrl": "https://usestring.ai",
-  "version": "1.2.1",
+  "version": "1.2.3",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "@usestring/mcp",
+      "version": "1.2.3",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "STRING_AI_API_KEY",
+          "description": "Your String API key (get one at portal.usestring.ai)",
+          "isRequired": true,
+          "isSecret": true
+        }
+      ]
+    }
+  ],
   "remotes": [
     {
       "type": "streamable-http",
