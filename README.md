@@ -12,7 +12,7 @@ Windsurf, Claude Desktop, and more.
 | Tool                  | Description                                                                     |
 | --------------------- | ------------------------------------------------------------------------------- |
 | `web_access_fetch`        | Fetch one URL and get clean, LLM-ready Markdown back                            |
-| `web_access_product_help` | Ask about String products or services and get current documentation with source links |
+| `web_access_product_help` | Ask about String products or services and get current public-site excerpts with source links |
 | `web_access_request`      | Send a POST, PUT or PATCH with a body to a URL                                  |
 | `web_access_search`       | Search the web: ranked results plus the knowledge panel, AI overview, local pack and other surfaces Google rendered; optional `searchCount` (1–50) pages Google |
 | `web_access_sitemap`      | Crawl a site and map its URLs as an asynchronous job, driven by `action`        |
