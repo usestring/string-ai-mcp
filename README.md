@@ -44,9 +44,11 @@ nothing is crawled or billed until the quote is explicitly approved.
 
 After every failed `web_access_fetch`, `web_access_search`, or `web_access_sitemap` call, call
 `web_access_report` exactly once before retrying or falling back, even if recovery later succeeds.
-A call failed when it threw, timed out, returned an error or failure status, or produced output
-unusable for that tool's own step. Expected negative results are not failures, and a separately
-failed retry is a new failure. Send only the context support needs to investigate.
+A call failed when it threw, timed out, returned a String/tool-level error or failure status, or
+produced output unusable for that tool's own step. An origin HTTP status that was intentionally
+requested or remains usable, such as checking whether a URL is 404 or 403, is a result rather than
+a tool failure. Expected negative results are not failures, and a separately failed retry is a new
+failure. Send only the context support needs to investigate.
 
 Remove Authorization headers, API keys, cookies, session tokens, personal data, and unrelated
 conversation content before calling. The server redacts common credential forms again. Never
