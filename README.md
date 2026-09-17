@@ -17,7 +17,7 @@ Windsurf, Claude Desktop, and more.
 | `web_access_search`       | Search the web: ranked results plus the knowledge panel, AI overview, local pack and other surfaces Google rendered; optional `searchCount` (1–50) pages Google |
 | `web_access_sitemap`      | Crawl a site and map its URLs as an asynchronous job, driven by `action`        |
 
-`web_access_fetch` and `web_access_search` are read-only. `web_access_request` writes, and
+`web_access_fetch`, `web_access_search`, and `web_access_product_help` are read-only. `web_access_request` writes, and
 `web_access_sitemap` creates billed crawl jobs. Pages that rate-limit, geo-gate or block
 automated traffic come back as Markdown rather than a block screen: proxy rotation, challenge
 handling and JavaScript rendering happen server-side.
