@@ -54,6 +54,11 @@ interface ApiRequestOptions {
 	body?: Record<string, unknown>;
 }
 
+// Tells the String API which first-party surface a request came from; it is telemetry only and
+// never affects authorization or billing.
+const REQUEST_SOURCE_HEADER = "x-string-source";
+const REQUEST_SOURCE = "self_hosted_mcp";
+
 async function apiFetch(path: string, { method = "POST", query, body }: ApiRequestOptions = {}): Promise<Response> {
 	const url = new URL(`${API_BASE_URL}${path}`);
 	for (const [key, value] of Object.entries(query ?? {})) {
@@ -64,6 +69,7 @@ async function apiFetch(path: string, { method = "POST", query, body }: ApiReque
 		method,
 		headers: {
 			Authorization: `Bearer ${API_KEY}`,
+			[REQUEST_SOURCE_HEADER]: REQUEST_SOURCE,
 			...(body !== undefined ? { "Content-Type": "application/json" } : {}),
 		},
 		body: body !== undefined ? JSON.stringify(body) : undefined,
