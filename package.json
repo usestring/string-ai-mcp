@@ -5,7 +5,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "description": "Official String Web Access MCP server — search the web, fetch or write to any URL, and map a site's URLs as clean, LLM-ready Markdown, with anti-bot handling, CAPTCHAs and JS rendering server-side.",
+  "description": "Official String Web Access MCP server — search the web, fetch or send requests to any URL, and map a site's URLs as clean, LLM-ready Markdown, with anti-bot handling, CAPTCHAs and JS rendering server-side.",
   "type": "module",
   "bin": {
     "string-ai-mcp": "build/index.js"
