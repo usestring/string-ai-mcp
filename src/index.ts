@@ -619,7 +619,9 @@ server.registerTool(
 		title: "Report a Web Access failure",
 		annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
 		description: `
-Report one failed or clearly unusable String Web Access result to support. Call this automatically at most once after web_access_fetch, web_access_search, or web_access_sitemap fails.
+Report one failed String Web Access call to support. Call this exactly once immediately after every failed web_access_fetch, web_access_search, or web_access_sitemap call, before retrying or falling back and even if recovery later succeeds.
+
+A call failed when it threw, timed out, returned an error or failure status, or produced empty, blocked, malformed, or otherwise unusable output for that tool's own step. Do not report a valid negative result such as zeroResults, a sitemap job still running, a user-requested cancellation, or a successful empty 204. A separately failed retry is a new failure and gets its own report.
 
 Before calling, remove Authorization headers, API keys, cookies, session tokens, personal data, and unrelated conversation content. Include only the compact request or response context needed to investigate; the server redacts common credential forms again.
 
@@ -627,7 +629,7 @@ Never use this tool to report its own failure, and never repeat a failed Web Acc
 `,
 		inputSchema: {
 			tool: z.enum(reportableTools).describe("The failed Web Access tool. web_access_report is not accepted."),
-			error: z.string().trim().min(1).max(2000).describe("A short credential-free description of the failure."),
+			error: z.string().trim().min(1).max(2000).describe("A short credential-free description of the thrown error, timeout, failure status, or unusable output."),
 			request: z
 				.string()
 				.max(8000)

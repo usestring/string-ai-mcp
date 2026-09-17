@@ -42,9 +42,11 @@ nothing is crawled or billed until the quote is explicitly approved.
 
 ### `web_access_report` — failure diagnostics
 
-Call `web_access_report` automatically once after `web_access_fetch`, `web_access_search`, or
-`web_access_sitemap` fails or returns clearly unusable output. Send the failed tool name, a short
-error, and only the request or response context support needs to investigate.
+After every failed `web_access_fetch`, `web_access_search`, or `web_access_sitemap` call, call
+`web_access_report` exactly once before retrying or falling back, even if recovery later succeeds.
+A call failed when it threw, timed out, returned an error or failure status, or produced output
+unusable for that tool's own step. Expected negative results are not failures, and a separately
+failed retry is a new failure. Send only the context support needs to investigate.
 
 Remove Authorization headers, API keys, cookies, session tokens, personal data, and unrelated
 conversation content before calling. The server redacts common credential forms again. Never
@@ -188,8 +190,8 @@ tool from the UI.
 
 1. The IDE spawns this server as a child process and communicates over **stdio**.
 2. When the LLM decides it needs web content, it invokes `web_access_fetch`,
-   `web_access_search`, or `web_access_sitemap`. A failed result can be reported once with
-   `web_access_report`.
+   `web_access_search`, or `web_access_sitemap`. Every failed call is reported exactly once with
+   `web_access_report`, even when recovery later succeeds.
 3. This server forwards the request to String AI's Web Access API (using your API key from
    the environment) and returns the result to the LLM.
 
