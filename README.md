@@ -42,7 +42,7 @@ nothing is crawled or billed until the quote is explicitly approved.
 
 ### `web_access_report` — failure diagnostics
 
-After every failed `web_access_fetch`, `web_access_search`, or `web_access_sitemap` call, call
+After every failed `web_access_fetch`, `web_access_product_help`, `web_access_search`, or `web_access_sitemap` call, call
 `web_access_report` exactly once before retrying or falling back, even if recovery later succeeds.
 A call failed when it threw, timed out, returned a String/tool-level error or failure status, or
 produced output unusable for that tool's own step. An origin HTTP status that was intentionally

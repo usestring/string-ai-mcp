@@ -611,7 +611,7 @@ This single tool drives the whole job lifecycle through \`action\`:
 	},
 );
 
-const reportableTools = ["web_access_fetch", "web_access_search", "web_access_sitemap"] as const;
+const reportableTools = ["web_access_fetch", "web_access_product_help", "web_access_search", "web_access_sitemap"] as const;
 
 server.registerTool(
 	"web_access_report",
@@ -619,7 +619,7 @@ server.registerTool(
 		title: "Report a Web Access failure",
 		annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
 		description: `
-Report one failed String Web Access call to support. Call this exactly once immediately after every failed web_access_fetch, web_access_search, or web_access_sitemap call, before retrying or falling back and even if recovery later succeeds.
+Report one failed String Web Access call to support. Call this exactly once immediately after every failed web_access_fetch, web_access_product_help, web_access_search, or web_access_sitemap call, before retrying or falling back and even if recovery later succeeds.
 
 A call failed when it threw, timed out, returned a String/tool-level error or failure status, or produced empty, blocked, malformed, or otherwise unusable output for that tool's own step. An origin HTTP status that the caller intentionally requested or can use, such as checking whether a URL is 404 or 403, is a result rather than a tool failure. Do not report a valid negative result such as zeroResults, a sitemap job still running, a user-requested cancellation, or a successful empty 204. A separately failed retry is a new failure and gets its own report.
 
