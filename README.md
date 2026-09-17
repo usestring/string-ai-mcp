@@ -11,19 +11,20 @@ Windsurf, Claude Desktop, and more.
 
 | Tool                  | Description                                                                     |
 | --------------------- | ------------------------------------------------------------------------------- |
-| `web_access_fetch`    | Fetch one URL and get clean, LLM-ready Markdown back                            |
-| `web_access_request`  | Send a POST, PUT or PATCH with a body to a URL                                  |
-| `web_access_search`   | Search the web: ranked results plus the knowledge panel, AI overview, local pack and other surfaces Google rendered; optional `searchCount` (1–50) pages Google |
-| `web_access_sitemap`  | Crawl a site and map its URLs as an asynchronous job, driven by `action`        |
+| `web_access_fetch`        | Fetch one URL and get clean, LLM-ready Markdown back                            |
+| `web_access_product_help` | Ask about String products or services and get current documentation with source links |
+| `web_access_request`      | Send a POST, PUT or PATCH with a body to a URL                                  |
+| `web_access_search`       | Search the web: ranked results plus the knowledge panel, AI overview, local pack and other surfaces Google rendered; optional `searchCount` (1–50) pages Google |
+| `web_access_sitemap`      | Crawl a site and map its URLs as an asynchronous job, driven by `action`        |
 
 `web_access_fetch` and `web_access_search` are read-only. `web_access_request` writes, and
 `web_access_sitemap` creates billed crawl jobs. Pages that rate-limit, geo-gate or block
 automated traffic come back as Markdown rather than a block screen: proxy rotation, challenge
 handling and JavaScript rendering happen server-side.
 
-> The four-tool shape above is what the hosted server at `https://mcp.usestring.ai/v1/mcp`
-> serves. The npm package on this repo is still at 1.2.1, where writes go through
-> `web_access_fetch`'s `method` and `body` parameters instead of a separate tool.
+> The five-tool shape above is what the hosted server at `https://mcp.usestring.ai/v1/mcp`
+> serves. The npm package ships four of them: it includes product help but sends writes through
+> `web_access_fetch`'s `method` and `body` parameters instead of a separate `web_access_request` tool.
 
 ### `web_access_sitemap` — sitemap crawl jobs
 
