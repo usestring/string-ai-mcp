@@ -212,7 +212,7 @@ async function fetchBoundedText(
 		body.set(chunk, offset);
 		offset += chunk.byteLength;
 	}
-	return { text: new TextDecoder().decode(body), truncated };
+	return { text: new TextDecoder().decode(body, { stream: truncated }), truncated };
 }
 
 function productHelpTerms(question: string): string[] {
@@ -278,7 +278,11 @@ function rankProductHelpDocuments(question: string, documents: ProductHelpDocume
 			}
 			if (score > 0 && canonicalPaths.has(path)) score += 8;
 			if (path === "/pricing" && terms.includes("pricing")) score += 100;
-			if (path.startsWith("/docs/mcp/") && terms.includes("mcp")) score += path === "/docs/mcp/remote" ? 100 : 60;
+			if (path.startsWith("/docs/mcp/") && terms.includes("mcp")) {
+				const local = ["self", "npm", "npx", "stdio", "local", "locally"].some((term) => terms.includes(term));
+				const preferred = local ? "/docs/mcp/self-hosted" : "/docs/mcp/remote";
+				score += path === preferred ? 100 : 60;
+			}
 			if ((path === "/composer" && terms.includes("composer")) ||
 				(path === "/managed-services" && (terms.includes("bespoke") || terms.includes("managed"))) ||
 				(path === "/finance" && terms.includes("finance"))) score += 60;

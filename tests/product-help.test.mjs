@@ -24,6 +24,7 @@ test("help selects canonical pages within one shared UTF-8 excerpt budget", asyn
     for (const [question, paths] of [
       ["How does String price Web Access requests?", ["/pricing"]],
       ["How do I connect String MCP to Claude Code?", ["/docs/mcp/remote"]],
+      ["How do I run self-hosted MCP locally?", ["/docs/mcp/self-hosted"]],
       ["How does Composer differ from Bespoke Web Datasets?", ["/composer", "/managed-services"]],
     ]) {
       const result = await client.callTool({ name: "web_access_product_help", arguments: { question } });
