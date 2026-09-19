@@ -11,19 +11,22 @@ Windsurf, Claude Desktop, and more.
 
 | Tool                  | Description                                                                     |
 | --------------------- | ------------------------------------------------------------------------------- |
-| `web_access_fetch`    | Fetch one URL and get clean, LLM-ready Markdown back                            |
-| `web_access_request`  | Send a POST, PUT or PATCH with a body to a URL                                  |
-| `web_access_search`   | Search the web: ranked results plus the knowledge panel, AI overview, local pack and other surfaces Google rendered; optional `searchCount` (1–50) pages Google |
-| `web_access_sitemap`  | Crawl a site and map its URLs as an asynchronous job, driven by `action`        |
+| `web_access_fetch`        | Fetch one URL and get clean, LLM-ready Markdown back                            |
+| `web_access_product_help` | Ask about String products or services and get current public-site excerpts with source links |
+| `web_access_request`      | Send a POST, PUT or PATCH with a body to a URL                                  |
+| `web_access_search`       | Search the web: ranked results plus the knowledge panel, AI overview, local pack and other surfaces Google rendered; optional `searchCount` (1–50) pages Google |
+| `web_access_sitemap`      | Crawl a site and map its URLs as an asynchronous job, driven by `action`        |
+| `web_access_report`       | Send one redacted, credit-free failure diagnostic to String support             |
 
-`web_access_fetch` and `web_access_search` are read-only. `web_access_request` writes, and
+`web_access_fetch`, `web_access_search`, and `web_access_product_help` are read-only. `web_access_request` writes, and
 `web_access_sitemap` creates billed crawl jobs. Pages that rate-limit, geo-gate or block
 automated traffic come back as Markdown rather than a block screen: proxy rotation, challenge
 handling and JavaScript rendering happen server-side.
 
-> The four-tool shape above is what the hosted server at `https://mcp.usestring.ai/v1/mcp`
-> serves. The npm package on this repo is still at 1.2.1, where writes go through
-> `web_access_fetch`'s `method` and `body` parameters instead of a separate tool.
+> The six-tool shape above is what the hosted server at `https://mcp.usestring.ai/v1/mcp`
+> serves. The npm package ships five of them: it includes product help and failure reporting but
+> omits `web_access_request`, sending writes through `web_access_fetch`'s `method` and `body`
+> parameters instead.
 
 ### `web_access_sitemap` — sitemap crawl jobs
 
@@ -38,6 +41,19 @@ nothing is crawled or billed until the quote is explicitly approved.
 | `results` | Paginated discovered URLs (`limit` ≤ 5000 default 1000, `offset`). Durable after completion; per-URL `discoveredUrls` is only present for ~1h. |
 | `cancel`  | Stop a non-terminal job; already-fetched pages stay billed and readable.                            |
 | `list`    | The account's recent crawl jobs (`limit` ≤ 100 default 20, `offset`).                               |
+
+### `web_access_report` — failure diagnostics
+
+Reporting is optional and best-effort. Continue useful recovery first. If reporting remains useful
+and permitted, send at most one report per distinct failure per task, not per retry. Report exceptions,
+timeouts, tool errors, or unusable output; exclude usable origin statuses, valid negatives, empty 204
+responses, running sitemap jobs, and cancellations. Each reporting attempt has a two-second deadline.
+
+Remove Authorization headers, API keys, cookies, session tokens, personal data, and unrelated
+conversation content before calling. The server redacts common credential forms again. Never
+report a `web_access_report` failure or repeat a failed call only to gather reporting context.
+Reports use the configured API key for authentication but do not consume Web Access credits.
+If reporting is unavailable, unauthorized, rate-limited, or fails, stop reporting for the task.
 
 ## Quick Start
 
@@ -175,8 +191,9 @@ tool from the UI.
 ```
 
 1. The IDE spawns this server as a child process and communicates over **stdio**.
-2. When the LLM decides it needs web content, it invokes `web_access_fetch`
-   or `web_access_search`.
+2. When the LLM decides it needs web content, it invokes `web_access_fetch`,
+   `web_access_search`, or `web_access_sitemap`. Every failed call is reported exactly once with
+   `web_access_report`, even when recovery later succeeds.
 3. This server forwards the request to String AI's Web Access API (using your API key from
    the environment) and returns the result to the LLM.
 
