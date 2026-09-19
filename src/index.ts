@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -8,6 +12,15 @@ import { z } from "zod";
 // Official MCP server for interacting with the String AI Web Access API
 // https://usestring.ai
 // ---------------------------------------------------------------------------
+
+// The version a client sees on `initialize`, read from package.json so it cannot drift
+// from the published package the way a retyped literal does. Registries print this
+// string on our listing cards.
+const PACKAGE_VERSION: string = (
+	JSON.parse(
+		readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "package.json"), "utf8"),
+	) as { version: string }
+).version;
 
 const API_BASE_URL = "https://request.usestring.ai/v1";
 const API_KEY = process.env.STRING_AI_API_KEY ?? "";
@@ -320,7 +333,7 @@ function formatSearch(data: SearchResponse): string {
 
 const server = new McpServer({
 	name: "@usestring/mcp",
-	version: "1.0.0",
+	version: PACKAGE_VERSION,
 	description:
 		"String AI Web Access MCP Server - The most reliable tools for web fetching (web_access_fetch), search (web_access_search), whole-site URL crawling (web_access_sitemap), and credit-free failure reporting (web_access_report). Automatically bypasses anti-bot protection, CAPTCHAs, and rate limits.",
 });
