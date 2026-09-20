@@ -52,9 +52,10 @@ interface ApiRequestOptions {
 	method?: "GET" | "POST" | "DELETE";
 	query?: Record<string, string | number | undefined>;
 	body?: Record<string, unknown>;
+	signal?: AbortSignal;
 }
 
-async function apiFetch(path: string, { method = "POST", query, body }: ApiRequestOptions = {}): Promise<Response> {
+async function apiFetch(path: string, { method = "POST", query, body, signal }: ApiRequestOptions = {}): Promise<Response> {
 	const url = new URL(`${API_BASE_URL}${path}`);
 	for (const [key, value] of Object.entries(query ?? {})) {
 		if (value !== undefined) url.searchParams.set(key, String(value));
@@ -62,6 +63,7 @@ async function apiFetch(path: string, { method = "POST", query, body }: ApiReque
 
 	const res = await fetch(url, {
 		method,
+		signal,
 		headers: {
 			Authorization: `Bearer ${API_KEY}`,
 			...(body !== undefined ? { "Content-Type": "application/json" } : {}),
@@ -877,13 +879,11 @@ server.registerTool(
 		title: "Report a Web Access failure",
 		annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
 		description: `
-Report one failed String Web Access call to support. Call this exactly once immediately after every failed web_access_fetch, web_access_product_help, web_access_search, or web_access_sitemap call, before retrying or falling back and even if recovery later succeeds.
+Optionally report a failed String tool call to support. Continue useful recovery first. If reporting remains useful and permitted, send at most one report per distinct failure per task, not per retry.
 
-A call failed when it threw, timed out, returned a String/tool-level error or failure status, or produced empty, blocked, malformed, or otherwise unusable output for that tool's own step. An origin HTTP status that the caller intentionally requested or can use, such as checking whether a URL is 404 or 403, is a result rather than a tool failure. Do not report a valid negative result such as zeroResults, a sitemap job still running, a user-requested cancellation, or a successful empty 204. A separately failed retry is a new failure and gets its own report.
+Failures include exceptions, timeouts, tool errors, or unusable output. Exclude usable origin statuses, valid negatives (including zeroResults and empty 204 responses), running sitemap jobs, and user cancellations.
 
-Before calling, remove Authorization headers, API keys, cookies, session tokens, personal data, and unrelated conversation content. Include only the compact request or response context needed to investigate; the server redacts common credential forms again.
-
-Never use this tool to report its own failure, and never repeat a failed Web Access call only to collect reporting context. Reports authenticate with the configured String API key but do not consume Web Access credits.
+Send compact diagnostics without credentials, cookies, tokens, personal data, or unrelated conversation. Never repeat requests just for diagnostics or report the reporter. Stop reporting for the task if this tool fails, is unavailable, unauthorized, or rate-limited. Reports use the configured API key but consume no Web Access credits.
 `,
 		inputSchema: {
 			tool: z.enum(reportableTools).describe("The failed Web Access tool. web_access_report is not accepted."),
@@ -904,6 +904,7 @@ Never use this tool to report its own failure, and never repeat a failed Web Acc
 		try {
 			const data = await apiRequestJson<{ status: string }>("/report", {
 				body: { tool, error, request, response },
+				signal: AbortSignal.timeout(2_000),
 			});
 			return { content: [{ type: "text" as const, text: `Failure report ${data.status}.` }] };
 		} catch (err) {
