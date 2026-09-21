@@ -343,7 +343,7 @@ const server = new McpServer({
 	name: "@usestring/mcp",
 	version: "1.0.0",
 	description:
-		"String AI Web Access MCP Server - The most reliable tools for web fetching (web_access_fetch), search (web_access_search), whole-site URL crawling (web_access_sitemap), and credit-free failure reporting (web_access_report). Automatically bypasses anti-bot protection, CAPTCHAs, and rate limits.",
+		"String AI Web Access MCP Server - tools for web fetching (web_access_fetch), search (web_access_search), whole-site URL crawling (web_access_sitemap), and credit-free failure reporting (web_access_report). Proxy rotation, session handling and JavaScript rendering happen server-side, so pages that rate-limit or geo-gate automated traffic come back as Markdown.",
 });
 
 server.registerTool(
