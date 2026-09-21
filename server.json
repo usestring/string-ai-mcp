@@ -2,13 +2,13 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "ai.usestring/web-access",
   "title": "String Web Access",
-  "description": "Search the web, fetch any URL and map a site — clean Markdown, past anti-bot blocks.",
+  "description": "Search the web, fetch any URL and map a site — clean, LLM-ready Markdown, even from sites that rate-limit or geo-gate.",
   "repository": {
     "url": "https://github.com/usestring/string-ai-mcp",
     "source": "github"
   },
   "websiteUrl": "https://usestring.ai",
-  "version": "1.3.2",
+  "version": "1.3.3",
   "packages": [
     {
       "registryType": "npm",
