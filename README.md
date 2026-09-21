@@ -2,7 +2,7 @@
 
 The official [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server for
 [String AI](https://usestring.ai)'s Web Access API. Search the web, fetch any URL or send it a
-write request, and map a site's URLs — all returned as clean, LLM-ready Markdown. Proxy rotation,
+request, and map a site's URLs — all returned as clean, LLM-ready Markdown. Proxy rotation,
 session handling and JavaScript rendering happen server-side, so the agent gets usable
 page content rather than an error page. Connect any MCP-compatible client — VS Code, Cursor,
 Windsurf, Claude Desktop, and more.
