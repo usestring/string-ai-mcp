@@ -2,9 +2,9 @@
 
 The official [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server for
 [String AI](https://usestring.ai)'s Web Access API. Search the web, fetch any URL or send it a
-write request, and map a site's URLs — all returned as clean, LLM-ready Markdown. Proxy rotation,
-anti-bot handling, CAPTCHA solving and JavaScript rendering happen server-side, so the agent gets
-the page instead of a block screen. Connect any MCP-compatible client — VS Code, Cursor,
+request, and map a site's URLs — all returned as clean, LLM-ready Markdown. Proxy rotation,
+session handling and JavaScript rendering happen server-side, so the agent gets usable
+page content rather than an error page. Connect any MCP-compatible client — VS Code, Cursor,
 Windsurf, Claude Desktop, and more.
 
 ## Tools
@@ -20,7 +20,7 @@ Windsurf, Claude Desktop, and more.
 
 `web_access_fetch`, `web_access_search`, and `web_access_product_help` are read-only. `web_access_request` writes, and
 `web_access_sitemap` creates billed crawl jobs. Pages that rate-limit, geo-gate or block
-automated traffic come back as Markdown rather than a block screen: proxy rotation, challenge
+automated traffic come back as Markdown rather than an error page: proxy rotation, session
 handling and JavaScript rendering happen server-side.
 
 > The six-tool shape above is what the hosted server at `https://mcp.usestring.ai/v1/mcp`
@@ -200,7 +200,7 @@ tool from the UI.
 ## About String AI
 
 [String AI](https://usestring.ai) provides a powerful web access API that handles proxies,
-anti-bot measures, and JavaScript rendering automatically. Get your API key at
+session handling, and JavaScript rendering automatically. Get your API key at
 [usestring.ai](https://usestring.ai).
 
 ## License
