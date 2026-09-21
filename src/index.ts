@@ -1,7 +1,5 @@
 #!/usr/bin/env node
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -15,12 +13,11 @@ import { z } from "zod";
 
 // The version a client sees on `initialize`, read from package.json so it cannot drift
 // from the published package the way a retyped literal does. Registries print this
-// string on our listing cards.
-const PACKAGE_VERSION: string = (
-	JSON.parse(
-		readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "package.json"), "utf8"),
-	) as { version: string }
-).version;
+// string on our listing cards. createRequire resolves relative to this module and
+// parses the JSON itself, so there is no path arithmetic to get wrong.
+const { version: PACKAGE_VERSION } = createRequire(import.meta.url)("../package.json") as {
+	version: string;
+};
 
 const API_BASE_URL = "https://request.usestring.ai/v1";
 const API_KEY = process.env.STRING_AI_API_KEY ?? "";
