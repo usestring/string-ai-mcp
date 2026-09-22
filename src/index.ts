@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { createRequire } from "node:module";
+
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -8,6 +10,14 @@ import { z } from "zod";
 // Official MCP server for interacting with the String AI Web Access API
 // https://usestring.ai
 // ---------------------------------------------------------------------------
+
+// The version a client sees on `initialize`, read from package.json so it cannot drift
+// from the published package the way a retyped literal does. Registries print this
+// string on our listing cards. createRequire resolves relative to this module and
+// parses the JSON itself, so there is no path arithmetic to get wrong.
+const { version: PACKAGE_VERSION } = createRequire(import.meta.url)("../package.json") as {
+	version: string;
+};
 
 const API_BASE_URL = "https://request.usestring.ai/v1";
 const API_KEY = process.env.STRING_AI_API_KEY ?? "";
@@ -341,7 +351,7 @@ function formatSearch(data: SearchResponse): string {
 
 const server = new McpServer({
 	name: "@usestring/mcp",
-	version: "1.0.0",
+	version: PACKAGE_VERSION,
 	description:
 		"String AI Web Access MCP Server - tools for web fetching (web_access_fetch), search (web_access_search), whole-site URL crawling (web_access_sitemap), and credit-free failure reporting (web_access_report). Proxy rotation, session handling and JavaScript rendering happen server-side, so pages that rate-limit or geo-gate automated traffic come back as Markdown.",
 });
