@@ -1,0 +1,69 @@
+# Publishing is driven by the version in package.json: change it on main and this
+# ships that release to npm and to the MCP registry. Nothing else triggers a
+# publish, so the number in the repo is the number users get.
+name: Publish
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - package.json
+  workflow_dispatch:
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # OIDC, which is how the registry authenticates this repo
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      # The path filter fires on any package.json edit, a dependency bump
+      # included, so decide here whether this version is actually new rather
+      # than letting npm fail the job over a republish.
+      - name: Is this version unpublished?
+        id: check
+        run: |
+          version="$(node -p 'require("./package.json").version')"
+          name="$(node -p 'require("./package.json").name')"
+          if npm view "$name@$version" version >/dev/null 2>&1; then
+            echo "$name@$version is already on npm; nothing to publish"
+            echo "new=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "new=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.check.outputs.new == 'true'
+        run: npm ci
+      - if: steps.check.outputs.new == 'true'
+        run: npm run build
+      - if: steps.check.outputs.new == 'true'
+        run: node scripts/check-versions.mjs
+
+      - name: Publish to npm
+        if: steps.check.outputs.new == 'true'
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # Second, because the registry entry points at the npm release: publishing
+      # it first would advertise a version nobody can install yet.
+      - name: Publish the registry entry
+        if: steps.check.outputs.new == 'true'
+        run: |
+          curl -sSL -o mcp-publisher.tar.gz \
+            "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz"
+          tar xzf mcp-publisher.tar.gz mcp-publisher
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish

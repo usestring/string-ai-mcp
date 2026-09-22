@@ -2,29 +2,31 @@
 
 The official [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server for
 [String AI](https://usestring.ai)'s Web Access API. Search the web, fetch any URL or send it a
-write request, and map a site's URLs — all returned as clean, LLM-ready Markdown. Proxy rotation,
-anti-bot handling, CAPTCHA solving and JavaScript rendering happen server-side, so the agent gets
-the page instead of a block screen. Connect any MCP-compatible client — VS Code, Cursor,
+request, and map a site's URLs — all returned as clean, LLM-ready Markdown. Proxy rotation,
+session handling and JavaScript rendering happen server-side, so the agent gets usable
+page content rather than an error page. Connect any MCP-compatible client — VS Code, Cursor,
 Windsurf, Claude Desktop, and more.
 
 ## Tools
 
 | Tool                  | Description                                                                     |
 | --------------------- | ------------------------------------------------------------------------------- |
-| `web_access_fetch`    | Fetch one URL and get clean, LLM-ready Markdown back                            |
-| `web_access_request`  | Send a POST, PUT or PATCH with a body to a URL                                  |
-| `web_access_search`   | Search the web: ranked results plus the knowledge panel, AI overview, local pack and other surfaces Google rendered; optional `searchCount` (1–50) pages Google |
-| `web_access_sitemap`  | Crawl a site and map its URLs as an asynchronous job, driven by `action`        |
-| `web_access_report`   | Send one redacted, credit-free failure diagnostic to String support             |
+| `web_access_fetch`        | Fetch one URL and get clean, LLM-ready Markdown back                            |
+| `web_access_product_help` | Ask about String products or services; get one source (two for comparisons), with a shared 4 KiB excerpt budget and source links |
+| `web_access_request`      | Send a POST, PUT or PATCH with a body to a URL                                  |
+| `web_access_search`       | Search the web: ranked results plus the knowledge panel, AI overview, local pack and other surfaces Google rendered; optional `searchCount` (1–50) pages Google |
+| `web_access_sitemap`      | Crawl a site and map its URLs as an asynchronous job, driven by `action`        |
+| `web_access_report`       | Send one redacted, credit-free failure diagnostic to String support             |
 
-`web_access_fetch` and `web_access_search` are read-only. `web_access_request` writes, and
+`web_access_fetch`, `web_access_search`, and `web_access_product_help` are read-only. `web_access_request` writes, and
 `web_access_sitemap` creates billed crawl jobs. Pages that rate-limit, geo-gate or block
-automated traffic come back as Markdown rather than a block screen: proxy rotation, challenge
+automated traffic come back as Markdown rather than an error page: proxy rotation, session
 handling and JavaScript rendering happen server-side.
 
-> The five-tool shape above is what the hosted server at `https://mcp.usestring.ai/v1/mcp`
-> serves. The npm package omits `web_access_request`; writes go through
-> `web_access_fetch`'s `method` and `body` parameters instead of a separate tool.
+> The six-tool shape above is what the hosted server at `https://mcp.usestring.ai/v1/mcp`
+> serves. The npm package ships five of them: it includes product help and failure reporting but
+> omits `web_access_request`, sending writes through `web_access_fetch`'s `method` and `body`
+> parameters instead.
 
 ### `web_access_sitemap` — sitemap crawl jobs
 
@@ -42,18 +44,16 @@ nothing is crawled or billed until the quote is explicitly approved.
 
 ### `web_access_report` — failure diagnostics
 
-After every failed `web_access_fetch`, `web_access_product_help`, `web_access_search`, or `web_access_sitemap` call, call
-`web_access_report` exactly once before retrying or falling back, even if recovery later succeeds.
-A call failed when it threw, timed out, returned a String/tool-level error or failure status, or
-produced output unusable for that tool's own step. An origin HTTP status that was intentionally
-requested or remains usable, such as checking whether a URL is 404 or 403, is a result rather than
-a tool failure. Expected negative results are not failures, and a separately failed retry is a new
-failure. Send only the context support needs to investigate.
+Reporting is optional and best-effort. Continue useful recovery first. If reporting remains useful
+and permitted, send at most one report per distinct failure per task, not per retry. Report exceptions,
+timeouts, tool errors, or unusable output; exclude usable origin statuses, valid negatives, empty 204
+responses, running sitemap jobs, and cancellations. Each reporting attempt has a two-second deadline.
 
 Remove Authorization headers, API keys, cookies, session tokens, personal data, and unrelated
 conversation content before calling. The server redacts common credential forms again. Never
 report a `web_access_report` failure or repeat a failed call only to gather reporting context.
 Reports use the configured API key for authentication but do not consume Web Access credits.
+If reporting is unavailable, unauthorized, rate-limited, or fails, stop reporting for the task.
 
 ## Quick Start
 
@@ -200,7 +200,7 @@ tool from the UI.
 ## About String AI
 
 [String AI](https://usestring.ai) provides a powerful web access API that handles proxies,
-anti-bot measures, and JavaScript rendering automatically. Get your API key at
+session handling, and JavaScript rendering automatically. Get your API key at
 [usestring.ai](https://usestring.ai).
 
 ## License
