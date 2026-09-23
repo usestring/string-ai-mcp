@@ -142,7 +142,7 @@ const SEARCH_SURFACES = [
 	"paging",
 ] as const;
 
-const SEARCH_COUNT_MAX = 50;
+const SEARCH_COUNT_MAX = 100;
 const PRODUCT_HELP_EXCERPT_BUDGET = 4 * 1024;
 const PRODUCT_HELP_CANDIDATE_COUNT = 8;
 const PRODUCT_HELP_SOURCE_LIMIT = 24 * 1024;
@@ -543,7 +543,7 @@ Search the public web for a query and get ranked organic results back, plus what
 **Best for:** a request that names no URL, or one that needs sources found before anything is read.
 **Not for:** a URL you already have — use web_access_fetch instead.
 
-**Optional request field:** \`searchCount\` — how many organic results you want, an integer from 1 to ${SEARCH_COUNT_MAX} (above ${SEARCH_COUNT_MAX} is rejected). Google is paged, up to 10 pages, until that many are in hand; each page is billed as one search. Omit it for one page, about 10 results.
+**Optional request field:** \`searchCount\` — how many organic results you want, an integer from 1 to ${SEARCH_COUNT_MAX} (above ${SEARCH_COUNT_MAX} is rejected). Google is paged, up to 15 pages, until that many are in hand; each page is billed as one search. Omit it for one page, about 10 results.
 
 **Usage Example:**
 \`\`\`json
@@ -559,7 +559,7 @@ Search the public web for a query and get ranked organic results back, plus what
 - \`overviews\` — Google's AI overviews: the first entry with no topic is the query's own summary, entries with a topic and question are the "Things to know" tabs, declined: true marks a frame Google did not fill. Each has text and the cited sources as { title, url } — fetch those to verify a claim.
 - \`peopleAlsoAsk\` (questions only; answers are not on the page), \`relatedSearches\`, \`answers\` (localTime, currency, unitConversion, weather, translation, sports or flights), \`spelling\` (substituted or suggested correction).
 - \`ads\`, \`videos\`, \`shortVideos\`, \`discussions\`, \`images\`, \`sitelinks\` — each entry with position, title and url.
-- \`paging\` — { pages, complete }, only when searchCount was sent. pages is how many results pages answered, each billed as one search. complete: false means the search was cut short (a later page could not be fetched, or the time budget ran out before searchCount) and results holds what was collected; fewer results with complete: true means Google had no more, the ten-page cap was reached, or the first page carried no organic results (a local pack or knowledge panel alone is not paged). Surfaces describe the first page only; positions run on across pages.
+- \`paging\` — { pages, complete }, only when searchCount was sent. pages is how many results pages answered, each billed as one search. complete: false means the search was cut short (a later page could not be fetched, or the time budget ran out before searchCount) and results holds what was collected; fewer results with complete: true means Google had no more, the fifteen-page cap was reached, or the first page carried no organic results (a local pack or knowledge panel alone is not paged). Surfaces describe the first page only; positions run on across pages.
 
 A snippet is not the page, and an overview is not a source. To read a result, call web_access_fetch on its URL before answering from it.
 `,
@@ -572,7 +572,7 @@ A snippet is not the page, and an overview is not a source. To read a result, ca
 				.max(SEARCH_COUNT_MAX)
 				.optional()
 				.describe(
-					`Organic results wanted, 1 to ${SEARCH_COUNT_MAX}. Google is paged, up to 10 pages, until that many are in hand; each page is billed as one search. Omit for one page (about 10 results).`,
+					`Organic results wanted, 1 to ${SEARCH_COUNT_MAX}. Google is paged, up to 15 pages, until that many are in hand; each page is billed as one search. Omit for one page (about 10 results).`,
 				),
 		},
 	},
