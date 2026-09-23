@@ -438,7 +438,7 @@ Fetch any webpage and get clean, LLM-ready Markdown back. String AI's Web Access
 **Not for:** searching the web when you don't have a URL — use web_access_search instead.
 
 **Optional parameters (omit unless you need them):**
-- \`format\` — \`markdown\` (default), \`raw\` (verbatim upstream body), or \`json\` (a \`{ statusCode, headers, data }\` envelope with the destination's status and headers).
+- \`format\` — \`markdown\` (default), \`raw\` (the destination's verbatim body), or \`json\` (a \`{ statusCode, headers, data }\` envelope with the destination's status and headers).
 - \`executeJS\` — set true to render JavaScript for SPAs when the content comes back empty. Cannot be combined with \`headers\`.
 - \`method\` + \`body\` — use POST/PUT/PATCH with a body to send writes (\`body\` is rejected on GET).
 - \`headers\` — forward custom request headers. Not supported when \`executeJS\` is enabled.
@@ -453,7 +453,7 @@ Fetch any webpage and get clean, LLM-ready Markdown back. String AI's Web Access
 				.enum(["json", "raw", "markdown"])
 				.default("markdown")
 				.describe(
-					"Output format: 'markdown' for clean LLM-optimized text (recommended), 'raw' for the verbatim upstream body, 'json' for a { statusCode, headers, data } envelope.",
+					"Output format: 'markdown' for clean LLM-optimized text (recommended), 'raw' for the destination's verbatim body, 'json' for a { statusCode, headers, data } envelope.",
 				),
 			executeJS: z
 				.boolean()
