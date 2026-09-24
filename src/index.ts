@@ -337,8 +337,33 @@ function productHelpExcerpt(question: string, body: string, limit: number): stri
 	return selected.sort((a, b) => a.index - b.index).map(({ text }) => text).join("\n\n");
 }
 
+/** Google AI Mode's answer, the whole of an aiMode response; see the API reference for every field. */
+interface AIModeAnswer {
+	text: string;
+	markdown?: string;
+	sources: { title?: string; url?: string; snippet?: string; source?: string }[];
+	[field: string]: unknown;
+}
+
+/** Renders an AI Mode answer: the answer as Markdown, its sources as a list, and anything else it showed as JSON. */
+function formatAIMode(answer: AIModeAnswer): string {
+	const body = answer.markdown || answer.text;
+	const sources = answer.sources
+		.map((s, i) => `${i + 1}. ${s.title ?? s.source ?? "Source"}${s.url ? `\n   ${s.url}` : ""}${s.snippet ? `\n   ${s.snippet}` : ""}`)
+		.join("\n\n");
+	const extras: Record<string, unknown> = {};
+	for (const name of ["products", "places", "videos"]) {
+		if (answer[name] !== undefined) extras[name] = answer[name];
+	}
+	let out = body;
+	if (sources) out += `\n\nSources:\n${sources}`;
+	if (Object.keys(extras).length > 0) out += `\n\nAlso in the answer (${Object.keys(extras).join(", ")}):\n${JSON.stringify(extras, null, 2)}`;
+	return out;
+}
+
 /** Renders the ranked documents as numbered lines and appends every surface the page carried, as JSON. */
 function formatSearch(data: SearchResponse): string {
+	if (data.aiMode) return formatAIMode(data.aiMode as AIModeAnswer);
 	const results = data.results.map((r) => `${r.position}. ${r.title}\n   ${r.url}\n   ${r.snippet}`).join("\n\n");
 	const surfaces: Record<string, unknown> = {};
 	for (const name of SEARCH_SURFACES) {
@@ -543,7 +568,18 @@ Search the public web for a query and get ranked organic results back, plus what
 **Best for:** a request that names no URL, or one that needs sources found before anything is read.
 **Not for:** a URL you already have — use web_access_fetch instead.
 
+**Optional targeting fields:** \`country\` — ISO 3166-1 alpha-2 code the search runs from, e.g. \`GB\` (default \`US\`); \`language\` — results language tag such as \`en\` or \`pt-br\`.
+\`\`\`json
+{ "query": "plumbers", "country": "GB", "language": "en" }
+\`\`\`
+To search from a place, send \`location\`, a place name such as \`London\` or \`Austin,Texas,United States\` (1 to 200 characters), or \`coordinates\`, \`{ latitude, longitude, radius }\` with radius in meters (default 5000). The search is sent from that place's country; if both are sent, \`coordinates\` win. A name that cannot be placed fails, so send \`coordinates\` instead. On the results page the place biases results toward it. The effect is strongest for queries like \`plumbers near me\`, and it is not exact city targeting: a bare query such as \`coffee shops\` may still return results from a wider area.
+\`\`\`json
+{ "query": "plumbers near me", "location": "Austin,Texas,United States" }
+\`\`\`
+
 **Optional request field:** \`searchCount\` — how many organic results you want, an integer from 1 to ${SEARCH_COUNT_MAX} (above ${SEARCH_COUNT_MAX} is rejected). Google is paged, up to 36 pages, until that many are in hand; each page is billed as one search. Many queries run out before 300: Google often has 100-200 results for a query, and you get what it has, with \`paging.complete: true\`. Omit it for one page, about 10 results.
+
+**Optional request field:** \`aiMode: true\` — ask Google AI Mode instead of the results page. The response is one generated answer with the pages it cites and any products, places and videos it shows, and no ranked results. Billed as one search. It cannot be combined with \`searchCount\`. If an AI Mode answer isn't available for the query, the call fails instead of returning a results page; retry, or search without it. With \`aiMode\`, \`location\` or \`coordinates\` sets the place the answer is given for; the answer stays in \`language\`. Without either, a question that depends on where you are, such as today's weather, may be answered without a location.
 
 **Usage Example:**
 \`\`\`json
@@ -551,6 +587,9 @@ Search the public web for a query and get ranked organic results back, plus what
 \`\`\`
 \`\`\`json
 { "query": "construction consulting firms Ohio", "searchCount": 30 }
+\`\`\`
+\`\`\`json
+{ "query": "best bakeries nearby", "aiMode": true, "coordinates": { "latitude": 48.8566, "longitude": 2.3522 } }
 \`\`\`
 
 **Returns:** the ranked organic results as numbered lines, each with position, title, URL and snippet. When the page carried more, an "Also on the page" JSON block follows with every surface Google rendered — present only when the page carried it, and only Google returns them:
@@ -561,10 +600,47 @@ Search the public web for a query and get ranked organic results back, plus what
 - \`ads\`, \`videos\`, \`shortVideos\`, \`discussions\`, \`images\`, \`sitelinks\` — each entry with position, title and url.
 - \`paging\` — { pages, complete }, only when searchCount was sent. pages is how many results pages answered, each billed as one search. complete: false means the search was cut short (a later page could not be fetched, or the time budget ran out before searchCount) and results holds what was collected; fewer results with complete: true means Google had no more, the 36-page cap was reached, or the first page carried no organic results (a local pack or knowledge panel alone is not paged). Surfaces describe the first page only; positions run on across pages.
 
+With \`aiMode: true\`, the answer comes first as Markdown (headings, lists, tables and code kept), then its cited sources as { title, url, snippet, source } — \`url\` is absent when a citation could not be resolved — and, when the answer shows them, \`products\` (title, price and oldPrice as displayed, merchant, moreSellers, rating, reviews, productId, url), \`places\` (name, category, rating, reviews, priceLevel, status, address, description, url) and \`videos\` (title, url, channel, duration). Fetch the sources to verify a claim.
+
 A snippet is not the page, and an overview is not a source. To read a result, call web_access_fetch on its URL before answering from it.
 `,
 		inputSchema: {
 			query: z.string().describe("The search query. Be specific and descriptive for best results."),
+			country: z
+				.string()
+				.regex(/^[A-Za-z]{2}$/)
+				.optional()
+				.describe("ISO 3166-1 alpha-2 country code the search runs from, e.g. 'GB'. Defaults to US."),
+			language: z
+				.string()
+				.regex(/^[a-z]{2}(-[a-z]{2})?$/i)
+				.optional()
+				.describe("Results language tag: two letters, optionally a two-letter region, e.g. 'en' or 'pt-br'."),
+			location: z
+				.string()
+				.trim()
+				.min(1)
+				.max(200)
+				.optional()
+				.describe(
+					"A place name such as 'London' or 'Austin,Texas,United States'; the search is sent from its country. Google results are biased toward the place, most strongly for 'near me' queries, and may still cover a wider area; with aiMode the answer is given for that place. A name that cannot be placed is rejected, so send coordinates instead. coordinates win when both are sent.",
+				),
+			coordinates: z
+				.object({
+					latitude: z.number().min(-90).max(90),
+					longitude: z.number().min(-180).max(180),
+					radius: z.number().int().min(1).max(1_000_000).optional(),
+				})
+				.optional()
+				.describe(
+					"A point to search from, { latitude, longitude, radius } with radius in meters (default 5000), sent from the country it lies in. Google results are biased toward it, most strongly for 'near me' queries; with aiMode the answer is given for it. Wins over location when both are sent.",
+				),
+			aiMode: z
+				.boolean()
+				.optional()
+				.describe(
+					"Answer from Google AI Mode instead of the results page: one generated answer with its cited sources and any products, places and videos it shows. Billed as one search; not combinable with searchCount.",
+				),
 			searchCount: z
 				.number()
 				.int()
@@ -576,10 +652,21 @@ A snippet is not the page, and an overview is not a source. To read a result, ca
 				),
 		},
 	},
-	async ({ query, searchCount }) => {
+	async ({ query, country, language, location, coordinates, aiMode, searchCount }) => {
 		try {
+			if (aiMode && searchCount !== undefined) {
+				throw new Error("searchCount does not apply with aiMode, which answers with one generated answer rather than ranked results");
+			}
 			const data = await apiRequestJson<SearchResponse>("/search", {
-				body: { query, ...(searchCount !== undefined ? { searchCount } : {}) },
+				body: {
+					query,
+					...(aiMode ? { engine: "google_ai_mode" } : {}),
+					...(country !== undefined ? { country: country.toUpperCase() } : {}),
+					...(language !== undefined ? { language } : {}),
+					...(location !== undefined ? { location } : {}),
+					...(coordinates !== undefined ? { coordinates } : {}),
+					...(searchCount !== undefined ? { searchCount } : {}),
+				},
 			});
 
 			return {
