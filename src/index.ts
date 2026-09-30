@@ -143,6 +143,21 @@ const SEARCH_SURFACES = [
 ] as const;
 
 const SEARCH_COUNT_MAX = 300;
+// Google counts 10 results per page, and page plus searchCount stay within the first
+// SEARCH_COUNT_MAX results, so page 30 is the deepest one a search may start from.
+const SEARCH_PAGE_SIZE = 10;
+const SEARCH_PAGE_MAX = SEARCH_COUNT_MAX / SEARCH_PAGE_SIZE;
+const SEARCH_DATE_WINDOWS = ["hour", "day", "week", "month", "year"] as const;
+
+const isoDate = (what: string) =>
+	z
+		.string()
+		.regex(/^\d{4}-\d{2}-\d{2}$/, "must be an ISO date such as 2024-06-30")
+		.refine((d) => {
+			const parsed = new Date(`${d}T00:00:00Z`);
+			return !Number.isNaN(parsed.getTime()) && parsed.toISOString().startsWith(d);
+		}, "must be a real calendar date")
+		.describe(what);
 const PRODUCT_HELP_EXCERPT_BUDGET = 4 * 1024;
 const PRODUCT_HELP_CANDIDATE_COUNT = 8;
 const PRODUCT_HELP_SOURCE_LIMIT = 24 * 1024;
@@ -553,6 +568,14 @@ Search the public web for a query and get ranked organic results back, plus what
 { "query": "construction consulting firms Ohio", "searchCount": 30 }
 \`\`\`
 
+**Optional Google fields:** \`page\`, \`dateRange\` and \`sortBy\` apply to Google results only.
+- \`page\` — the results page to start from, an integer from 1 to ${SEARCH_PAGE_MAX} (default 1), where page N is the page Google shows as N. Without \`searchCount\` the response is that one page; with it, \`searchCount\` results are collected starting from that page. \`page\` and \`searchCount\` together stay within the first ${SEARCH_COUNT_MAX} results: (page - 1) × ${SEARCH_PAGE_SIZE} + (\`searchCount\`, or ${SEARCH_PAGE_SIZE} without it) must be at most ${SEARCH_COUNT_MAX}.
+- \`dateRange\` — limit results to a publication window: one of \`"hour"\`, \`"day"\`, \`"week"\`, \`"month"\` or \`"year"\` for the past hour through the past year, or \`{ "from": "2024-01-01", "to": "2024-06-30" }\` for a custom range of ISO dates (YYYY-MM-DD), inclusive. Either end is optional but at least one is required, and \`from\` must not be after \`to\`.
+- \`sortBy\` — \`"relevance"\` (the default) or \`"date"\` for the newest results first.
+\`\`\`json
+{ "query": "heat pump grants", "page": 2, "dateRange": "month", "sortBy": "date" }
+\`\`\`
+
 **Returns:** the ranked organic results as numbered lines, each with position, title, URL and snippet. When the page carried more, an "Also on the page" JSON block follows with every surface Google rendered — present only when the page carried it, and only Google returns them:
 - \`entity\` — the knowledge panel for the one business or person the query named: title, subtitle, description and its source, rating, reviews, website, labelled attributes (address, phone, hours…), social profiles. Often the whole answer for a business query, with no results.
 - \`places\` — local-pack business listings: name, category, rating, reviews, address, phone, hours, url, mapsUrl. Read entity and places before treating empty results as no answer.
@@ -574,12 +597,57 @@ A snippet is not the page, and an overview is not a source. To read a result, ca
 				.describe(
 					`Organic results wanted, 1 to ${SEARCH_COUNT_MAX}. Google is paged, up to 36 pages, until that many are in hand or it has no more, and each page is billed as one search. Omit for one page (about 10 results).`,
 				),
+			page: z
+				.number()
+				.int()
+				.min(1)
+				.max(SEARCH_PAGE_MAX)
+				.optional()
+				.describe(
+					`Google only: the results page to start from, an integer from 1 to ${SEARCH_PAGE_MAX} (default 1), where page N is the page Google shows as N. Without searchCount the response is that one page; with it, searchCount results are collected starting from that page. page and searchCount together stay within the first ${SEARCH_COUNT_MAX} results: (page-1)*${SEARCH_PAGE_SIZE} + (searchCount, or ${SEARCH_PAGE_SIZE}) must be at most ${SEARCH_COUNT_MAX}.`,
+				),
+			dateRange: z
+				.union([
+					z.enum(SEARCH_DATE_WINDOWS),
+					z
+						.object({
+							from: isoDate("First day of the range, inclusive, YYYY-MM-DD.").optional(),
+							to: isoDate("Last day of the range, inclusive, YYYY-MM-DD.").optional(),
+						})
+						.strict()
+						.refine((r) => r.from !== undefined || r.to !== undefined, "a custom dateRange needs from, to, or both")
+						// ISO dates of one fixed width compare correctly as strings.
+						.refine((r) => r.from === undefined || r.to === undefined || r.from <= r.to, "dateRange.from must not be after dateRange.to"),
+				])
+				.optional()
+				.describe(
+					"Google only: limit results to a publication window. One of 'hour', 'day', 'week', 'month' or 'year' for the past hour through the past year, or {from, to} for a custom range of ISO dates (YYYY-MM-DD), inclusive; either end is optional but at least one is required, and from must not be after to.",
+				),
+			sortBy: z
+				.enum(["relevance", "date"])
+				.optional()
+				.describe("Google only: 'relevance' (the default) or 'date' for the newest results first."),
 		},
 	},
-	async ({ query, searchCount }) => {
+	async ({ query, searchCount, page, dateRange, sortBy }) => {
 		try {
+			if (page !== undefined) {
+				const skipped = (page - 1) * SEARCH_PAGE_SIZE;
+				const wanted = searchCount ?? SEARCH_PAGE_SIZE;
+				if (skipped + wanted > SEARCH_COUNT_MAX) {
+					throw new Error(
+						`page ${page} starts at result ${skipped + 1}, so searchCount may be at most ${SEARCH_COUNT_MAX - skipped}: page and searchCount together stay within the first ${SEARCH_COUNT_MAX} results`,
+					);
+				}
+			}
 			const data = await apiRequestJson<SearchResponse>("/search", {
-				body: { query, ...(searchCount !== undefined ? { searchCount } : {}) },
+				body: {
+					query,
+					...(searchCount !== undefined ? { searchCount } : {}),
+					...(page !== undefined ? { page } : {}),
+					...(dateRange !== undefined ? { dateRange } : {}),
+					...(sortBy !== undefined ? { sortBy } : {}),
+				},
 			});
 
 			return {
