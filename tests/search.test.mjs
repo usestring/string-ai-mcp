@@ -16,6 +16,7 @@ test("search passes the Google options through and validates them", async () => 
     const { tools } = await client.listTools();
     const props = tools.find((tool) => tool.name === "web_access_search").inputSchema.properties;
     assert.deepEqual(props.sortBy.enum, ["relevance", "date"]);
+    assert.deepEqual(props.searchType.enum, ["web", "news"]);
     assert.equal(props.page.minimum, 1);
     assert.equal(props.page.maximum, 30);
     assert.ok(props.dateRange.anyOf, JSON.stringify(props.dateRange));
@@ -33,6 +34,14 @@ test("search passes the Google options through and validates them", async () => 
     const windowed = await search({ page: 3, dateRange: "week" });
     assert.deepEqual(JSON.parse(windowed.content[0].text.split("\n")[2].trim()), { query: "q", page: 3, dateRange: "week" });
 
+    const news = await search({ searchType: "news", dateRange: "day", sortBy: "date" });
+    assert.ok(!news.isError, JSON.stringify(news));
+    const lines = news.content[0].text.split("\n");
+    assert.equal(lines[1].trim(), "Reuters · 2 hours ago, published 2026-09-30T08:12:00Z");
+    assert.equal(lines[2].trim(), "https://news.example/a");
+    assert.deepEqual(JSON.parse(lines[3].trim()), { query: "q", searchType: "news", dateRange: "day", sortBy: "date" });
+    assert.ok(!news.content[0].text.includes("data:image"), "thumbnail data URI leaked into the text");
+
     for (const bad of [
       { page: 0 },
       { page: 31 },
@@ -44,6 +53,7 @@ test("search passes the Google options through and validates them", async () => 
       { dateRange: { from: "2024-02-30" } },
       { dateRange: { from: "2024-01-01", until: "2024-02-01" } },
       { sortBy: "newest" },
+      { searchType: "images" },
     ]) {
       const result = await search(bad).catch((err) => ({ isError: true, content: [{ text: String(err) }] }));
       assert.equal(result.isError, true, `${JSON.stringify(bad)} was accepted`);

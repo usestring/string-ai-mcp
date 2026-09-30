@@ -109,7 +109,11 @@ interface SearchResult {
 	title: string;
 	url: string;
 	snippet: string;
-	displayUrl: string;
+	displayUrl?: string;
+	/** News articles only: the publisher, the ISO 8601 UTC publication time, and that time as Google shows it. */
+	source?: string;
+	publishedAt?: string;
+	age?: string;
 }
 
 /**
@@ -352,9 +356,16 @@ function productHelpExcerpt(question: string, body: string, limit: number): stri
 	return selected.sort((a, b) => a.index - b.index).map(({ text }) => text).join("\n\n");
 }
 
-/** Renders the ranked documents as numbered lines and appends every surface the page carried, as JSON. */
-function formatSearch(data: SearchResponse): string {
-	const results = data.results.map((r) => `${r.position}. ${r.title}\n   ${r.url}\n   ${r.snippet}`).join("\n\n");
+/** Renders the ranked documents (or news articles) as numbered lines and appends every surface the page carried, as JSON. */
+function formatSearch(data: SearchResponse, news = false): string {
+	const results = data.results
+		.map((r) => {
+			if (!news) return `${r.position}. ${r.title}\n   ${r.url}\n   ${r.snippet}`;
+			const when = [r.age, r.publishedAt && `published ${r.publishedAt}`].filter(Boolean).join(", ");
+			const byline = [r.source, when].filter(Boolean).join(" · ");
+			return `${r.position}. ${r.title}\n   ${byline}\n   ${r.url}\n   ${r.snippet}`;
+		})
+		.join("\n\n");
 	const surfaces: Record<string, unknown> = {};
 	for (const name of SEARCH_SURFACES) {
 		if (data[name] !== undefined) surfaces[name] = data[name];
@@ -576,6 +587,11 @@ Search the public web for a query and get ranked organic results back, plus what
 { "query": "heat pump grants", "page": 2, "dateRange": "month", "sortBy": "date" }
 \`\`\`
 
+**Optional Google field:** \`searchType\` — \`"web"\` (the default) for ranked web results, or \`"news"\` for Google News articles. Each article comes back as a numbered line with its title, then its publisher, Google's time line (such as "2 hours ago") and the ISO 8601 UTC publication time when Google's time could be read, then its URL and snippet. \`page\`, \`searchCount\`, \`dateRange\` and \`sortBy\` apply to news the same way.
+\`\`\`json
+{ "query": "Nvidia", "searchType": "news", "dateRange": "day", "sortBy": "date" }
+\`\`\`
+
 **Returns:** the ranked organic results as numbered lines, each with position, title, URL and snippet. When the page carried more, an "Also on the page" JSON block follows with every surface Google rendered — present only when the page carried it, and only Google returns them:
 - \`entity\` — the knowledge panel for the one business or person the query named: title, subtitle, description and its source, rating, reviews, website, labelled attributes (address, phone, hours…), social profiles. Often the whole answer for a business query, with no results.
 - \`places\` — local-pack business listings: name, category, rating, reviews, address, phone, hours, url, mapsUrl. Read entity and places before treating empty results as no answer.
@@ -627,9 +643,15 @@ A snippet is not the page, and an overview is not a source. To read a result, ca
 				.enum(["relevance", "date"])
 				.optional()
 				.describe("Google only: 'relevance' (the default) or 'date' for the newest results first."),
+			searchType: z
+				.enum(["web", "news"])
+				.optional()
+				.describe(
+					"Google only: 'web' (the default) for ranked web results, or 'news' for Google News articles, each with its publisher and publication time. page, searchCount, dateRange and sortBy apply to news the same way.",
+				),
 		},
 	},
-	async ({ query, searchCount, page, dateRange, sortBy }) => {
+	async ({ query, searchCount, page, dateRange, sortBy, searchType }) => {
 		try {
 			if (page !== undefined) {
 				const skipped = (page - 1) * SEARCH_PAGE_SIZE;
@@ -647,6 +669,7 @@ A snippet is not the page, and an overview is not a source. To read a result, ca
 					...(page !== undefined ? { page } : {}),
 					...(dateRange !== undefined ? { dateRange } : {}),
 					...(sortBy !== undefined ? { sortBy } : {}),
+					...(searchType !== undefined ? { searchType } : {}),
 				},
 			});
 
@@ -654,7 +677,7 @@ A snippet is not the page, and an overview is not a source. To read a result, ca
 				content: [
 					{
 						type: "text" as const,
-						text: formatSearch(data),
+						text: formatSearch(data, searchType === "news"),
 					},
 				],
 			};
