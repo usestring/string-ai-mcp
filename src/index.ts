@@ -122,8 +122,18 @@ interface SearchResult {
  * only when the page carried it and is never merged into results; only Google returns them.
  * The full shape is documented at https://docs.usestring.ai/docs/api-reference/search#response.
  */
+/** One Google results page of a format "raw" search. */
+interface SearchRawPage {
+	page: number;
+	html: string;
+	htmlBytes: number;
+	htmlSource: "google" | "partner" | "rendered";
+	resolvedLinks: Record<string, string>;
+}
+
 interface SearchResponse {
 	results: SearchResult[];
+	pages?: SearchRawPage[];
 	zeroResults?: boolean;
 	paging?: { pages: number; complete: boolean };
 	[surface: string]: unknown;
@@ -375,6 +385,39 @@ function formatSearch(data: SearchResponse, news = false): string {
 	return `${head}\n\nAlso on the page (${Object.keys(surfaces).join(", ")}):\n${JSON.stringify(surfaces, null, 2)}`;
 }
 
+/**
+ * The most page markup one raw search sends. A Google results page is about 1 MB, mostly inline
+ * script and style, and a client caps a tool result far below that, so each page's script and style
+ * contents are removed and the markup shares this budget in page order. The HTTP API returns pages whole.
+ */
+const RAW_HTML_BUDGET = 60_000;
+
+// Script and style are raw-text elements: their content ends at the first matching end tag, so
+// this match is exact for them.
+const RAW_TEXT_ELEMENT = /(<(script|style)\b[^>]*>)[\s\S]*?(<\/\2\s*>)/gi;
+
+/** Renders each raw page's source, size and resolved links, then its markup within RAW_HTML_BUDGET. */
+function formatRawPages(pages: SearchRawPage[]): string {
+	let budget = RAW_HTML_BUDGET;
+	const blocks = pages.map((p) => {
+		let html = p.html.replace(RAW_TEXT_ELEMENT, "$1$3");
+		let cut = false;
+		if (html.length > budget) {
+			const tag = html.lastIndexOf("<", budget);
+			html = html.slice(0, tag > 0 ? tag : budget);
+			cut = true;
+		}
+		budget = cut ? 0 : budget - html.length;
+		const links = Object.keys(p.resolvedLinks ?? {}).length;
+		const head = `Page ${p.page} · htmlSource ${p.htmlSource} · ${p.htmlBytes} bytes · ${links} resolved link${links === 1 ? "" : "s"}`;
+		const markup = cut
+			? `HTML (script and style contents removed; cut short by the ${RAW_HTML_BUDGET}-character budget per call${html ? "" : ", none left for this page"}):`
+			: "HTML (script and style contents removed):";
+		return `${head}\nResolved links:\n${JSON.stringify(p.resolvedLinks ?? {}, null, 2)}\n${markup}\n${html}`;
+	});
+	return blocks.join("\n\n") || "No results pages.";
+}
+
 const server = new McpServer({
 	name: "@usestring/mcp",
 	version: PACKAGE_VERSION,
@@ -592,6 +635,11 @@ Search the public web for a query and get ranked organic results back, plus what
 { "query": "Nvidia", "searchType": "news", "dateRange": "day", "sortBy": "date" }
 \`\`\`
 
+**Optional Google field:** \`format\` — \`"structured"\` (the default) for the results described below, or \`"raw"\` for the Google results pages themselves. Each page comes back as a block: its page number, \`htmlSource\` (\`google\` fetched from Google by String, \`partner\` fetched from Google by a data partner, or \`rendered\` built by String from the parsed results in Google's layout when no fetched page was available, never Google's own markup), its size in bytes, every resolved link (each Google redirect link on the page mapped to its destination), then its HTML with script and style contents removed. Links in the HTML point at their destinations, the original kept in \`data-original-href\`. A results page is about 1 MB, so at most ${RAW_HTML_BUDGET} characters of markup are sent per call, filled in page order, and a page past that budget carries only its source, size and links; the HTTP API's POST /v1/search returns whole pages. \`searchType\`, \`page\`, \`searchCount\`, \`dateRange\` and \`sortBy\` work with raw, billed as structured results are. Prefer structured results unless you need the markup.
+\`\`\`json
+{ "query": "heat pump grants", "format": "raw" }
+\`\`\`
+
 **Returns:** the ranked organic results as numbered lines, each with position, title, URL and snippet. When the page carried more, an "Also on the page" JSON block follows with every surface Google rendered — present only when the page carried it, and only Google returns them:
 - \`entity\` — the knowledge panel for the one business or person the query named: title, subtitle, description and its source, rating, reviews, website, labelled attributes (address, phone, hours…), social profiles. Often the whole answer for a business query, with no results.
 - \`places\` — local-pack business listings: name, category, rating, reviews, address, phone, hours, url, mapsUrl. Read entity and places before treating empty results as no answer.
@@ -649,9 +697,15 @@ A snippet is not the page, and an overview is not a source. To read a result, ca
 				.describe(
 					"Google only: 'web' (the default) for ranked web results, or 'news' for Google News articles, each with its publisher and publication time. page, searchCount, dateRange and sortBy apply to news the same way.",
 				),
+			format: z
+				.enum(["structured", "raw"])
+				.optional()
+				.describe(
+					`Google only: 'structured' (the default) for parsed results, or 'raw' for the results pages themselves: each page's htmlSource, size, resolved links and HTML with script and style contents removed, at most ${RAW_HTML_BUDGET} characters of markup per call in page order. searchType, page, searchCount, dateRange and sortBy work with raw.`,
+				),
 		},
 	},
-	async ({ query, searchCount, page, dateRange, sortBy, searchType }) => {
+	async ({ query, searchCount, page, dateRange, sortBy, searchType, format }) => {
 		try {
 			if (page !== undefined) {
 				const skipped = (page - 1) * SEARCH_PAGE_SIZE;
@@ -670,6 +724,7 @@ A snippet is not the page, and an overview is not a source. To read a result, ca
 					...(dateRange !== undefined ? { dateRange } : {}),
 					...(sortBy !== undefined ? { sortBy } : {}),
 					...(searchType !== undefined ? { searchType } : {}),
+					...(format !== undefined ? { format } : {}),
 				},
 			});
 
@@ -677,7 +732,7 @@ A snippet is not the page, and an overview is not a source. To read a result, ca
 				content: [
 					{
 						type: "text" as const,
-						text: formatSearch(data, searchType === "news"),
+						text: format === "raw" ? formatRawPages(data.pages ?? []) : formatSearch(data, searchType === "news"),
 					},
 				],
 			};

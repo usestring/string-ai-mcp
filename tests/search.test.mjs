@@ -17,6 +17,7 @@ test("search passes the Google options through and validates them", async () => 
     const props = tools.find((tool) => tool.name === "web_access_search").inputSchema.properties;
     assert.deepEqual(props.sortBy.enum, ["relevance", "date"]);
     assert.deepEqual(props.searchType.enum, ["web", "news"]);
+    assert.deepEqual(props.format.enum, ["structured", "raw"]);
     assert.equal(props.page.minimum, 1);
     assert.equal(props.page.maximum, 30);
     assert.ok(props.dateRange.anyOf, JSON.stringify(props.dateRange));
@@ -42,6 +43,19 @@ test("search passes the Google options through and validates them", async () => 
     assert.deepEqual(JSON.parse(lines[3].trim()), { query: "q", searchType: "news", dateRange: "day", sortBy: "date" });
     assert.ok(!news.content[0].text.includes("data:image"), "thumbnail data URI leaked into the text");
 
+    const raw = await search({ format: "raw", searchType: "news", searchCount: 30 });
+    assert.ok(!raw.isError, JSON.stringify(raw));
+    const text = raw.content[0].text;
+    assert.ok(text.startsWith("Page 1 · htmlSource google · 1048576 bytes · 1 resolved link\n"), text.slice(0, 200));
+    assert.ok(text.includes('"/goto?a": "https://a.example/"'));
+    assert.ok(text.includes('<script></script><style></style>'), "script and style contents kept");
+    assert.ok(text.includes('{"query":"q","searchCount":30,"searchType":"news","format":"raw"}'), "request not forwarded as sent");
+    assert.ok(text.includes("Page 2 · htmlSource rendered"));
+    assert.ok(text.includes("Page 3 · htmlSource partner · 31 bytes · 1 resolved link\nResolved links:"));
+    assert.ok(text.includes('"/goto?c": "https://c.example/"'), "links of a page past the budget dropped");
+    assert.ok(!text.includes("three"), "page past the budget still carried markup");
+    assert.ok(text.length < 61_000 + 2_000, `raw text is ${text.length} characters`);
+
     for (const bad of [
       { page: 0 },
       { page: 31 },
@@ -54,6 +68,7 @@ test("search passes the Google options through and validates them", async () => 
       { dateRange: { from: "2024-01-01", until: "2024-02-01" } },
       { sortBy: "newest" },
       { searchType: "images" },
+      { format: "html" },
     ]) {
       const result = await search(bad).catch((err) => ({ isError: true, content: [{ text: String(err) }] }));
       assert.equal(result.isError, true, `${JSON.stringify(bad)} was accepted`);
