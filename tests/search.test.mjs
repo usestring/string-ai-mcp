@@ -34,6 +34,8 @@ test("search passes the Google options through and validates them", async () => 
 
     const windowed = await search({ page: 3, dateRange: "week" });
     assert.deepEqual(JSON.parse(windowed.content[0].text.split("\n")[2].trim()), { query: "q", page: 3, dateRange: "week" });
+    assert.equal(windowed.content[0].text.split("\n")[0], "1. Echo (Google rank 21)");
+    assert.equal(plain.content[0].text.split("\n")[0], "1. Echo");
 
     const news = await search({ searchType: "news", dateRange: "day", sortBy: "date" });
     assert.ok(!news.isError, JSON.stringify(news));
