@@ -36,6 +36,8 @@ test("search passes the Google options through and validates them", async () => 
     assert.deepEqual(JSON.parse(windowed.content[0].text.split("\n")[2].trim()), { query: "q", page: 3, dateRange: "week" });
     assert.equal(windowed.content[0].text.split("\n")[0], "1. Echo (Google rank 21)");
     assert.equal(plain.content[0].text.split("\n")[0], "1. Echo");
+    assert.ok(plain.content[0].text.includes("2. Hidden\n   (no link: Google hid the destination)\n   no destination"), plain.content[0].text);
+    assert.ok(!plain.content[0].text.includes("undefined"), "a result without url printed undefined");
 
     const news = await search({ searchType: "news", dateRange: "day", sortBy: "date" });
     assert.ok(!news.isError, JSON.stringify(news));

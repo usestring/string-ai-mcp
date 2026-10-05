@@ -110,7 +110,8 @@ interface SearchResult {
 	/** Google's own rank for the result: the page's offset plus its place on that page. Google only. */
 	rank?: number;
 	title: string;
-	url: string;
+	/** Absent when Google linked the result only through a redirect whose destination is not known. */
+	url?: string;
 	snippet: string;
 	displayUrl?: string;
 	/** News articles only: the publisher, the ISO 8601 UTC publication time, and that time as Google shows it. */
@@ -372,10 +373,11 @@ function formatSearch(data: SearchResponse, news = false): string {
 	const results = data.results
 		.map((r) => {
 			const title = r.rank !== undefined && r.rank !== r.position ? `${r.title} (Google rank ${r.rank})` : r.title;
-			if (!news) return `${r.position}. ${title}\n   ${r.url}\n   ${r.snippet}`;
+			const url = r.url ?? "(no link: Google hid the destination)";
+			if (!news) return `${r.position}. ${title}\n   ${url}\n   ${r.snippet}`;
 			const when = [r.age, r.publishedAt && `published ${r.publishedAt}`].filter(Boolean).join(", ");
 			const byline = [r.source, when].filter(Boolean).join(" · ");
-			return `${r.position}. ${title}\n   ${byline}\n   ${r.url}\n   ${r.snippet}`;
+			return `${r.position}. ${title}\n   ${byline}\n   ${url}\n   ${r.snippet}`;
 		})
 		.join("\n\n");
 	const surfaces: Record<string, unknown> = {};
@@ -636,7 +638,7 @@ Search the public web for a query and get ranked organic results back, plus what
 { "query": "heat pump grants", "format": "raw" }
 \`\`\`
 
-**Returns:** the ranked organic results as numbered lines, each with position (its place in this response), title, URL and snippet; a title is followed by its Google rank when that differs from the position, as it does from \`page\` 2 on. When the page carried more, an "Also on the page" JSON block follows with every surface Google rendered — present only when the page carried it, and only Google returns them:
+**Returns:** the ranked organic results as numbered lines, each with position (its place in this response), title, URL and snippet; a title is followed by its Google rank when that differs from the position, as it does from \`page\` 2 on. A result whose destination Google hid is still listed, with "(no link)" in place of its URL. When the page carried more, an "Also on the page" JSON block follows with every surface Google rendered — present only when the page carried it, and only Google returns them:
 - \`entity\` — the knowledge panel for the one business or person the query named: title, subtitle, description and its source, rating, reviews, website, labelled attributes (address, phone, hours…), social profiles. Often the whole answer for a business query, with no results.
 - \`places\` — local-pack business listings: name, category, rating, reviews, address, phone, hours, url, mapsUrl. Read entity and places before treating empty results as no answer.
 - \`overviews\` — Google's AI overviews: the first entry with no topic is the query's own summary, entries with a topic and question are the "Things to know" tabs, declined: true marks a frame Google did not fill. Each has text and the cited sources as { title, url } — fetch those to verify a claim.

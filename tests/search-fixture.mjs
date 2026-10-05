@@ -20,6 +20,9 @@ globalThis.fetch = async (input, options) => {
     });
   }
   return Response.json({
-    results: [{ position: 1, ...(body.page ? { rank: (body.page - 1) * 10 + 1 } : {}), title: "Echo", url: "https://echo.example/", snippet: JSON.stringify(body), displayUrl: "echo.example" }],
+    results: [
+      { position: 1, ...(body.page ? { rank: (body.page - 1) * 10 + 1 } : {}), title: "Echo", url: "https://echo.example/", snippet: JSON.stringify(body), displayUrl: "echo.example" },
+      { position: 2, title: "Hidden", snippet: "no destination", displayUrl: "" },
+    ],
   });
 };
