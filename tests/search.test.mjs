@@ -48,14 +48,13 @@ test("search passes the Google options through and validates them", async () => 
     const raw = await search({ format: "raw", searchType: "news", searchCount: 30 });
     assert.ok(!raw.isError, JSON.stringify(raw));
     const text = raw.content[0].text;
-    assert.ok(text.startsWith("Page 1 · htmlSource google · 1048576 bytes · 1 resolved link\n"), text.slice(0, 200));
-    assert.ok(text.includes('"/goto?a": "https://a.example/"'));
-    assert.ok(text.includes('<script></script><style></style>'), "script and style contents kept");
+    assert.ok(text.startsWith("Page 1 · 160 bytes\nHTML:\n<!doctype html>"), text.slice(0, 200));
+    assert.ok(text.includes('<a href="https://a.example/"><h3>'), "markup altered");
     assert.ok(text.includes('{"query":"q","searchCount":30,"searchType":"news","format":"raw"}'), "request not forwarded as sent");
-    assert.ok(text.includes("Page 2 · htmlSource rendered"));
-    assert.ok(text.includes("Page 3 · htmlSource partner · 31 bytes · 1 resolved link\nResolved links:"));
-    assert.ok(text.includes('"/goto?c": "https://c.example/"'), "links of a page past the budget dropped");
+    assert.ok(text.includes("Page 2 · 140026 bytes\nHTML (cut short by the 60000-character budget per call):"));
+    assert.ok(text.includes("Page 3 · 31 bytes\nHTML (cut short by the 60000-character budget per call, none left for this page):"));
     assert.ok(!text.includes("three"), "page past the budget still carried markup");
+    assert.ok(!/htmlSource|resolved link/i.test(text), "raw text still names fields the contract dropped");
     assert.ok(text.length < 61_000 + 2_000, `raw text is ${text.length} characters`);
 
     for (const bad of [

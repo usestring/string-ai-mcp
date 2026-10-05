@@ -125,13 +125,11 @@ interface SearchResult {
  * only when the page carried it and is never merged into results; only Google returns them.
  * The full shape is documented at https://docs.usestring.ai/docs/api-reference/search#response.
  */
-/** One Google results page of a format "raw" search. */
+/** One results page of a format "raw" search: Google's layout, generated from the parsed results. */
 interface SearchRawPage {
 	page: number;
 	html: string;
 	htmlBytes: number;
-	htmlSource: "google" | "partner" | "rendered";
-	resolvedLinks: Record<string, string>;
 }
 
 interface SearchResponse {
@@ -390,21 +388,18 @@ function formatSearch(data: SearchResponse, news = false): string {
 }
 
 /**
- * The most page markup one raw search sends. A Google results page is about 1 MB, mostly inline
- * script and style, and a client caps a tool result far below that, so each page's script and style
- * contents are removed and the markup shares this budget in page order. The HTTP API returns pages whole.
+ * The most page markup one raw search sends. A raw page is generated from the parsed results and is
+ * about 6 to 13 KB, more for news with inline thumbnails, so one page always fits, but a long
+ * searchCount returns dozens and a client caps a tool result well below that. Pages share this
+ * budget in page order. The HTTP API returns every page whole.
  */
 const RAW_HTML_BUDGET = 60_000;
 
-// Script and style are raw-text elements: their content ends at the first matching end tag, so
-// this match is exact for them.
-const RAW_TEXT_ELEMENT = /(<(script|style)\b[^>]*>)[\s\S]*?(<\/\2\s*>)/gi;
-
-/** Renders each raw page's source, size and resolved links, then its markup within RAW_HTML_BUDGET. */
+/** Renders each raw page's number and size, then its markup within RAW_HTML_BUDGET. */
 function formatRawPages(pages: SearchRawPage[]): string {
 	let budget = RAW_HTML_BUDGET;
 	const blocks = pages.map((p) => {
-		let html = p.html.replace(RAW_TEXT_ELEMENT, "$1$3");
+		let html = p.html;
 		let cut = false;
 		if (html.length > budget) {
 			const tag = html.lastIndexOf("<", budget);
@@ -412,12 +407,9 @@ function formatRawPages(pages: SearchRawPage[]): string {
 			cut = true;
 		}
 		budget = cut ? 0 : budget - html.length;
-		const links = Object.keys(p.resolvedLinks ?? {}).length;
-		const head = `Page ${p.page} · htmlSource ${p.htmlSource} · ${p.htmlBytes} bytes · ${links} resolved link${links === 1 ? "" : "s"}`;
-		const markup = cut
-			? `HTML (script and style contents removed; cut short by the ${RAW_HTML_BUDGET}-character budget per call${html ? "" : ", none left for this page"}):`
-			: "HTML (script and style contents removed):";
-		return `${head}\nResolved links:\n${JSON.stringify(p.resolvedLinks ?? {}, null, 2)}\n${markup}\n${html}`;
+		const head = `Page ${p.page} · ${p.htmlBytes} bytes`;
+		const markup = cut ? `HTML (cut short by the ${RAW_HTML_BUDGET}-character budget per call${html ? "" : ", none left for this page"}):` : "HTML:";
+		return `${head}\n${markup}\n${html}`;
 	});
 	return blocks.join("\n\n") || "No results pages.";
 }
@@ -639,7 +631,7 @@ Search the public web for a query and get ranked organic results back, plus what
 { "query": "Nvidia", "searchType": "news", "dateRange": "day", "sortBy": "date" }
 \`\`\`
 
-**Optional Google field:** \`format\` — \`"structured"\` (the default) for the results described below, or \`"raw"\` for the Google results pages themselves. Each page comes back as a block: its page number, \`htmlSource\` (\`google\` fetched from Google by String, \`partner\` fetched from Google by a data partner, or \`rendered\` built by String from the parsed results in Google's layout when no fetched page was available, never Google's own markup), its size in bytes, every resolved link (each Google redirect link on the page mapped to its destination), then its HTML with script and style contents removed. Links in the HTML point at their destinations, the original kept in \`data-original-href\`. A results page is about 1 MB, so at most ${RAW_HTML_BUDGET} characters of markup are sent per call, filled in page order, and a page past that budget carries only its source, size and links; the HTTP API's POST /v1/search returns whole pages. \`searchType\`, \`page\`, \`searchCount\`, \`dateRange\` and \`sortBy\` work with raw, billed as structured results are. Prefer structured results unless you need the markup.
+**Optional Google field:** \`format\` — \`"structured"\` (the default) for the results described below, or \`"raw"\` for each results page as HTML in Google's layout, generated from the parsed results: results in \`#search > #rso\` with \`<h3>\` titles inside their links, news cards on a news search, and the ads, AI overview, People also ask, videos, related searches and knowledge panel or local pack on the first page. It is never Google's own page: no scripts, no Google tracking, and every link points straight at its destination. Each page comes back as a block: its page number, its size in bytes, then its HTML. A page is about 6 to 13 KB, so one always fits, but at most ${RAW_HTML_BUDGET} characters of markup are sent per call, filled in page order, and a page past that budget carries only its number and size; the HTTP API's POST /v1/search returns every page whole. \`searchType\`, \`page\`, \`searchCount\`, \`dateRange\` and \`sortBy\` work with raw, billed as structured results are. Prefer structured results unless you need HTML.
 \`\`\`json
 { "query": "heat pump grants", "format": "raw" }
 \`\`\`
@@ -705,7 +697,7 @@ A snippet is not the page, and an overview is not a source. To read a result, ca
 				.enum(["structured", "raw"])
 				.optional()
 				.describe(
-					`Google only: 'structured' (the default) for parsed results, or 'raw' for the results pages themselves: each page's htmlSource, size, resolved links and HTML with script and style contents removed, at most ${RAW_HTML_BUDGET} characters of markup per call in page order. searchType, page, searchCount, dateRange and sortBy work with raw.`,
+					`Google only: 'structured' (the default) for parsed results, or 'raw' for each results page as HTML in Google's layout, generated from the parsed results (no scripts, no Google tracking, direct links), at most ${RAW_HTML_BUDGET} characters of markup per call in page order. searchType, page, searchCount, dateRange and sortBy work with raw.`,
 				),
 		},
 	},
