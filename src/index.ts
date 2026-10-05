@@ -543,7 +543,7 @@ Search the public web for a query and get ranked organic results back, plus what
 **Best for:** a request that names no URL, or one that needs sources found before anything is read.
 **Not for:** a URL you already have — use web_access_fetch instead.
 
-**Optional request field:** \`searchCount\` — how many organic results you want, an integer from 1 to ${SEARCH_COUNT_MAX} (above ${SEARCH_COUNT_MAX} is rejected). Google is paged, up to 36 pages, until that many are in hand; each page is billed as one search. Many queries run out before 300: Google often has 100-200 results for a query, and you get what it has, with \`paging.complete: true\`. Omit it for one page, about 10 results.
+**Optional request field:** \`searchCount\` — how many organic results you want, an integer from 1 to ${SEARCH_COUNT_MAX} (above ${SEARCH_COUNT_MAX} is rejected). Google is paged, up to 36 pages, until that many are in hand; each page is billed as one search. If Google has fewer results than that, you get every result it has, with \`paging.complete: true\`. Omit it for one page, about 10 results.
 
 **Usage Example:**
 \`\`\`json
