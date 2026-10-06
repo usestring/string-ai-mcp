@@ -16,7 +16,6 @@ test("search passes the Google options through and validates them", async () => 
     const { tools } = await client.listTools();
     const props = tools.find((tool) => tool.name === "web_access_search").inputSchema.properties;
     assert.deepEqual(props.sortBy.enum, ["relevance", "date"]);
-    assert.deepEqual(props.searchType.enum, ["web", "news"]);
     assert.deepEqual(props.format.enum, ["structured", "raw"]);
     assert.equal(props.page.minimum, 1);
     assert.equal(props.page.maximum, 30);
@@ -39,20 +38,12 @@ test("search passes the Google options through and validates them", async () => 
     assert.ok(plain.content[0].text.includes("2. Hidden\n   (no link: Google hid the destination)\n   no destination"), plain.content[0].text);
     assert.ok(!plain.content[0].text.includes("undefined"), "a result without url printed undefined");
 
-    const news = await search({ searchType: "news", dateRange: "day", sortBy: "date" });
-    assert.ok(!news.isError, JSON.stringify(news));
-    const lines = news.content[0].text.split("\n");
-    assert.equal(lines[1].trim(), "Reuters · 2 hours ago, published 2026-09-30T08:12:00Z");
-    assert.equal(lines[2].trim(), "https://news.example/a");
-    assert.deepEqual(JSON.parse(lines[3].trim()), { query: "q", searchType: "news", dateRange: "day", sortBy: "date" });
-    assert.ok(!news.content[0].text.includes("data:image"), "thumbnail data URI leaked into the text");
-
-    const raw = await search({ format: "raw", searchType: "news", searchCount: 30 });
+    const raw = await search({ format: "raw", searchCount: 30 });
     assert.ok(!raw.isError, JSON.stringify(raw));
     const text = raw.content[0].text;
     assert.ok(text.startsWith("Page 1 · 160 bytes\nHTML:\n<!doctype html>"), text.slice(0, 200));
     assert.ok(text.includes('<a href="https://a.example/"><h3>'), "markup altered");
-    assert.ok(text.includes('{"query":"q","searchCount":30,"searchType":"news","format":"raw"}'), "request not forwarded as sent");
+    assert.ok(text.includes('{"query":"q","searchCount":30,"format":"raw"}'), "request not forwarded as sent");
     assert.ok(text.includes("Page 2 · 140026 bytes\nHTML (cut short by the 60000-character budget per call):"));
     assert.ok(text.includes("Page 3 · 31 bytes\nHTML (cut short by the 60000-character budget per call, none left for this page):"));
     assert.ok(!text.includes("three"), "page past the budget still carried markup");
@@ -70,7 +61,6 @@ test("search passes the Google options through and validates them", async () => 
       { dateRange: { from: "2024-02-30" } },
       { dateRange: { from: "2024-01-01", until: "2024-02-01" } },
       { sortBy: "newest" },
-      { searchType: "images" },
       { format: "html" },
     ]) {
       const result = await search(bad).catch((err) => ({ isError: true, content: [{ text: String(err) }] }));

@@ -114,10 +114,6 @@ interface SearchResult {
 	url?: string;
 	snippet: string;
 	displayUrl?: string;
-	/** News articles only: the publisher, the ISO 8601 UTC publication time, and that time as Google shows it. */
-	source?: string;
-	publishedAt?: string;
-	age?: string;
 }
 
 /**
@@ -368,16 +364,13 @@ function productHelpExcerpt(question: string, body: string, limit: number): stri
 	return selected.sort((a, b) => a.index - b.index).map(({ text }) => text).join("\n\n");
 }
 
-/** Renders the ranked documents (or news articles) as numbered lines and appends every surface the page carried, as JSON. */
-function formatSearch(data: SearchResponse, news = false): string {
+/** Renders the ranked documents as numbered lines and appends every surface the page carried, as JSON. */
+function formatSearch(data: SearchResponse): string {
 	const results = data.results
 		.map((r) => {
 			const title = r.rank !== undefined && r.rank !== r.position ? `${r.title} (Google rank ${r.rank})` : r.title;
 			const url = r.url ?? "(no link: Google hid the destination)";
-			if (!news) return `${r.position}. ${title}\n   ${url}\n   ${r.snippet}`;
-			const when = [r.age, r.publishedAt && `published ${r.publishedAt}`].filter(Boolean).join(", ");
-			const byline = [r.source, when].filter(Boolean).join(" · ");
-			return `${r.position}. ${title}\n   ${byline}\n   ${url}\n   ${r.snippet}`;
+			return `${r.position}. ${title}\n   ${url}\n   ${r.snippet}`;
 		})
 		.join("\n\n");
 	const surfaces: Record<string, unknown> = {};
@@ -391,7 +384,7 @@ function formatSearch(data: SearchResponse, news = false): string {
 
 /**
  * The most page markup one raw search sends. A raw page is generated from the parsed results and is
- * about 6 to 13 KB, more for news with inline thumbnails, so one page always fits, but a long
+ * about 6 to 13 KB, so one page always fits, but a long
  * searchCount returns dozens and a client caps a tool result well below that. Pages share this
  * budget in page order. The HTTP API returns every page whole.
  */
@@ -628,12 +621,9 @@ Search the public web for a query and get ranked organic results back, plus what
 { "query": "heat pump grants", "page": 2, "dateRange": "month", "sortBy": "date" }
 \`\`\`
 
-**Optional Google field:** \`searchType\` — \`"web"\` (the default) for ranked web results, or \`"news"\` for Google News articles. Each article comes back as a numbered line with its title, then its publisher, Google's time line (such as "2 hours ago") and the ISO 8601 UTC publication time when Google's time could be read, then its URL and snippet. \`page\`, \`searchCount\`, \`dateRange\` and \`sortBy\` apply to news the same way.
-\`\`\`json
-{ "query": "Nvidia", "searchType": "news", "dateRange": "day", "sortBy": "date" }
-\`\`\`
+**News articles** are not a \`web_access_search\` option: use the Google News site integration, \`POST /v1/integrations/googlenews/search\`.
 
-**Optional Google field:** \`format\` — \`"structured"\` (the default) for the results described below, or \`"raw"\` for each results page as HTML in Google's layout, generated from the parsed results: results in \`#search > #rso\` with \`<h3>\` titles inside their links, news cards on a news search, and the ads, AI overview, People also ask, videos, related searches and knowledge panel or local pack on the first page. It is never Google's own page: no scripts, no Google tracking, and every link points straight at its destination. Each page comes back as a block: its page number, its size in bytes, then its HTML. A page is about 6 to 13 KB, so one always fits, but at most ${RAW_HTML_BUDGET} characters of markup are sent per call, filled in page order, and a page past that budget carries only its number and size; the HTTP API's POST /v1/search returns every page whole. \`searchType\`, \`page\`, \`searchCount\`, \`dateRange\` and \`sortBy\` work with raw, billed as structured results are. Prefer structured results unless you need HTML.
+**Optional Google field:** \`format\` — \`"structured"\` (the default) for the results described below, or \`"raw"\` for each results page as HTML in Google's layout, generated from the parsed results: results in \`#search > #rso\` with \`<h3>\` titles inside their links, and the ads, AI overview, People also ask, videos, related searches and knowledge panel or local pack on the first page. It is never Google's own page: no scripts, no Google tracking, and every link points straight at its destination. Each page comes back as a block: its page number, its size in bytes, then its HTML. A page is about 6 to 13 KB, so one always fits, but at most ${RAW_HTML_BUDGET} characters of markup are sent per call, filled in page order, and a page past that budget carries only its number and size; the HTTP API's POST /v1/search returns every page whole. \`page\`, \`searchCount\`, \`dateRange\` and \`sortBy\` work with raw, billed as structured results are. Prefer structured results unless you need HTML.
 \`\`\`json
 { "query": "heat pump grants", "format": "raw" }
 \`\`\`
@@ -689,21 +679,15 @@ A snippet is not the page, and an overview is not a source. To read a result, ca
 				.enum(["relevance", "date"])
 				.optional()
 				.describe("Google only: 'relevance' (the default) or 'date' for the newest results first."),
-			searchType: z
-				.enum(["web", "news"])
-				.optional()
-				.describe(
-					"Google only: 'web' (the default) for ranked web results, or 'news' for Google News articles, each with its publisher and publication time. page, searchCount, dateRange and sortBy apply to news the same way.",
-				),
 			format: z
 				.enum(["structured", "raw"])
 				.optional()
 				.describe(
-					`Google only: 'structured' (the default) for parsed results, or 'raw' for each results page as HTML in Google's layout, generated from the parsed results (no scripts, no Google tracking, direct links), at most ${RAW_HTML_BUDGET} characters of markup per call in page order. searchType, page, searchCount, dateRange and sortBy work with raw.`,
+					`Google only: 'structured' (the default) for parsed results, or 'raw' for each results page as HTML in Google's layout, generated from the parsed results (no scripts, no Google tracking, direct links), at most ${RAW_HTML_BUDGET} characters of markup per call in page order. page, searchCount, dateRange and sortBy work with raw.`,
 				),
 		},
 	},
-	async ({ query, searchCount, page, dateRange, sortBy, searchType, format }) => {
+	async ({ query, searchCount, page, dateRange, sortBy, format }) => {
 		try {
 			if (page !== undefined) {
 				const skipped = (page - 1) * SEARCH_PAGE_SIZE;
@@ -721,7 +705,6 @@ A snippet is not the page, and an overview is not a source. To read a result, ca
 					...(page !== undefined ? { page } : {}),
 					...(dateRange !== undefined ? { dateRange } : {}),
 					...(sortBy !== undefined ? { sortBy } : {}),
-					...(searchType !== undefined ? { searchType } : {}),
 					...(format !== undefined ? { format } : {}),
 				},
 			});
@@ -730,7 +713,7 @@ A snippet is not the page, and an overview is not a source. To read a result, ca
 				content: [
 					{
 						type: "text" as const,
-						text: format === "raw" ? formatRawPages(data.pages ?? []) : formatSearch(data, searchType === "news"),
+						text: format === "raw" ? formatRawPages(data.pages ?? []) : formatSearch(data),
 					},
 				],
 			};

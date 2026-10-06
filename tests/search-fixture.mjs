@@ -12,13 +12,6 @@ globalThis.fetch = async (input, options) => {
       paging: { pages: 3, complete: true, stoppedBy: "search_count" },
     });
   }
-  if (body.searchType === "news") {
-    return Response.json({
-      results: [
-        { position: 1, title: "Echo", url: "https://news.example/a", snippet: JSON.stringify(body), source: "Reuters", publishedAt: "2026-09-30T08:12:00Z", age: "2 hours ago", thumbnail: "data:image/png;base64,AAAA" },
-      ],
-    });
-  }
   return Response.json({
     results: [
       { position: 1, ...(body.page ? { rank: (body.page - 1) * 10 + 1 } : {}), title: "Echo", url: "https://echo.example/", snippet: JSON.stringify(body), displayUrl: "echo.example" },
