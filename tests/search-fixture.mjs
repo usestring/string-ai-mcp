@@ -5,7 +5,7 @@ globalThis.fetch = async (input, options) => {
     const big = "<p>" + "r".repeat(70000) + "</p>";
     return Response.json({
       pages: [
-        { page: 1, html: `<!doctype html><html data-generated="generated-from-parsed-results"><body><div id="search"><div id="rso"><a href="https://a.example/"><h3>${JSON.stringify(body)}</h3></a></div></div></body></html>`, htmlBytes: 160 },
+        { page: 1, html: `<!doctype html><html><body><a href="https://a.example/"><h3>${JSON.stringify(body)}</h3></a></body></html>`, htmlBytes: 160 },
         { page: 2, html: `<html><body>${big}${big}</body></html>`, htmlBytes: 140026 },
         { page: 3, html: "<html><body>three</body></html>", htmlBytes: 31 },
       ],
