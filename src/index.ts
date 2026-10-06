@@ -105,11 +105,15 @@ async function apiRequestJson<T>(path: string, options: ApiRequestOptions = {}):
 }
 
 interface SearchResult {
+	/** The place in this response, from 1. */
 	position: number;
+	/** Google's own rank for the result: the page's offset plus its place on that page. Google only. */
+	rank?: number;
 	title: string;
-	url: string;
+	/** Absent when Google linked the result only through a redirect whose destination is not known. */
+	url?: string;
 	snippet: string;
-	displayUrl: string;
+	displayUrl?: string;
 }
 
 /**
@@ -118,10 +122,18 @@ interface SearchResult {
  * only when the page carried it and is never merged into results; only Google returns them.
  * The full shape is documented at https://docs.usestring.ai/docs/api-reference/search#response.
  */
+/** One results page of a format "raw" search, as HTML. */
+interface SearchRawPage {
+	page: number;
+	html: string;
+	htmlBytes: number;
+}
+
 interface SearchResponse {
 	results: SearchResult[];
+	pages?: SearchRawPage[];
 	zeroResults?: boolean;
-	paging?: { pages: number; complete: boolean };
+	paging?: { pages: number; complete: boolean; stoppedBy?: string };
 	[surface: string]: unknown;
 }
 
@@ -143,6 +155,21 @@ const SEARCH_SURFACES = [
 ] as const;
 
 const SEARCH_COUNT_MAX = 300;
+// Google counts 10 results per page, and page plus searchCount stay within the first
+// SEARCH_COUNT_MAX results, so page 30 is the deepest one a search may start from.
+const SEARCH_PAGE_SIZE = 10;
+const SEARCH_PAGE_MAX = SEARCH_COUNT_MAX / SEARCH_PAGE_SIZE;
+const SEARCH_DATE_WINDOWS = ["hour", "day", "week", "month", "year"] as const;
+
+const isoDate = (what: string) =>
+	z
+		.string()
+		.regex(/^\d{4}-\d{2}-\d{2}$/, "must be an ISO date such as 2024-06-30")
+		.refine((d) => {
+			const parsed = new Date(`${d}T00:00:00Z`);
+			return !Number.isNaN(parsed.getTime()) && parsed.toISOString().startsWith(d);
+		}, "must be a real calendar date")
+		.describe(what);
 const PRODUCT_HELP_EXCERPT_BUDGET = 4 * 1024;
 const PRODUCT_HELP_CANDIDATE_COUNT = 8;
 const PRODUCT_HELP_SOURCE_LIMIT = 24 * 1024;
@@ -339,7 +366,13 @@ function productHelpExcerpt(question: string, body: string, limit: number): stri
 
 /** Renders the ranked documents as numbered lines and appends every surface the page carried, as JSON. */
 function formatSearch(data: SearchResponse): string {
-	const results = data.results.map((r) => `${r.position}. ${r.title}\n   ${r.url}\n   ${r.snippet}`).join("\n\n");
+	const results = data.results
+		.map((r) => {
+			const title = r.rank !== undefined && r.rank !== r.position ? `${r.title} (Google rank ${r.rank})` : r.title;
+			const url = r.url ?? "(no link: Google hid the destination)";
+			return `${r.position}. ${title}\n   ${url}\n   ${r.snippet}`;
+		})
+		.join("\n\n");
 	const surfaces: Record<string, unknown> = {};
 	for (const name of SEARCH_SURFACES) {
 		if (data[name] !== undefined) surfaces[name] = data[name];
@@ -347,6 +380,32 @@ function formatSearch(data: SearchResponse): string {
 	const head = results || (data.zeroResults ? "No results: the engine reported that nothing matched." : "No ranked documents.");
 	if (Object.keys(surfaces).length === 0) return head;
 	return `${head}\n\nAlso on the page (${Object.keys(surfaces).join(", ")}):\n${JSON.stringify(surfaces, null, 2)}`;
+}
+
+/**
+ * The most page markup one raw search sends. A long searchCount returns dozens of pages, and a
+ * client caps a tool result well below that. Pages share this
+ * budget in page order. The HTTP API returns every page whole.
+ */
+const RAW_HTML_BUDGET = 60_000;
+
+/** Renders each raw page's number and size, then its markup within RAW_HTML_BUDGET. */
+function formatRawPages(pages: SearchRawPage[]): string {
+	let budget = RAW_HTML_BUDGET;
+	const blocks = pages.map((p) => {
+		let html = p.html;
+		let cut = false;
+		if (html.length > budget) {
+			const tag = html.lastIndexOf("<", budget);
+			html = html.slice(0, tag > 0 ? tag : budget);
+			cut = true;
+		}
+		budget = cut ? 0 : budget - html.length;
+		const head = `Page ${p.page} · ${p.htmlBytes} bytes`;
+		const markup = cut ? `HTML (cut short by the ${RAW_HTML_BUDGET}-character budget per call${html ? "" : ", none left for this page"}):` : "HTML:";
+		return `${head}\n${markup}\n${html}`;
+	});
+	return blocks.join("\n\n") || "No results pages.";
 }
 
 const server = new McpServer({
@@ -543,7 +602,7 @@ Search the public web for a query and get ranked organic results back, plus what
 **Best for:** a request that names no URL, or one that needs sources found before anything is read.
 **Not for:** a URL you already have — use web_access_fetch instead.
 
-**Optional request field:** \`searchCount\` — how many organic results you want, an integer from 1 to ${SEARCH_COUNT_MAX} (above ${SEARCH_COUNT_MAX} is rejected). Google is paged, up to 36 pages, until that many are in hand; each page is billed as one search. Many queries run out before 300: Google often has 100-200 results for a query, and you get what it has, with \`paging.complete: true\`. Omit it for one page, about 10 results.
+**Optional request field:** \`searchCount\` — how many organic results you want, an integer from 1 to ${SEARCH_COUNT_MAX} (above ${SEARCH_COUNT_MAX} is rejected). Google is paged, up to 36 pages, until that many are in hand; each page is billed as one search. Many queries run out before 300: Google often has 100-200 results for a query, and you get what it has, with \`paging.stoppedBy: "end_of_results"\`. Omit it for one page, about 10 results.
 
 **Usage Example:**
 \`\`\`json
@@ -553,13 +612,26 @@ Search the public web for a query and get ranked organic results back, plus what
 { "query": "construction consulting firms Ohio", "searchCount": 30 }
 \`\`\`
 
-**Returns:** the ranked organic results as numbered lines, each with position, title, URL and snippet. When the page carried more, an "Also on the page" JSON block follows with every surface Google rendered — present only when the page carried it, and only Google returns them:
+**Optional Google fields:** \`page\`, \`dateRange\` and \`sortBy\` apply to Google results only.
+- \`page\` — the results page to start from, an integer from 1 to ${SEARCH_PAGE_MAX} (default 1), where page N is the page Google shows as N. Without \`searchCount\` the response is that one page; with it, \`searchCount\` results are collected starting from that page. \`page\` and \`searchCount\` together stay within the first ${SEARCH_COUNT_MAX} results: (page - 1) × ${SEARCH_PAGE_SIZE} + (\`searchCount\`, or ${SEARCH_PAGE_SIZE} without it) must be at most ${SEARCH_COUNT_MAX}. A page past the last result returns no results with \`zeroResults: true\`. A page holds about 8 to 10 results, so separate \`page\` calls can repeat or skip a result; for one list without repeats, make one call with \`searchCount\`.
+- \`dateRange\` — limit results to a publication window: one of \`"hour"\`, \`"day"\`, \`"week"\`, \`"month"\` or \`"year"\` for the past hour through the past year, or \`{ "from": "2024-01-01", "to": "2024-06-30" }\` for a custom range of ISO dates (YYYY-MM-DD), inclusive. Either end is optional but at least one is required, and \`from\` must not be after \`to\`.
+- \`sortBy\` — \`"relevance"\` (the default) or \`"date"\` for the newest results first.
+\`\`\`json
+{ "query": "heat pump grants", "page": 2, "dateRange": "month", "sortBy": "date" }
+\`\`\`
+
+**Optional Google field:** \`format\` — \`"structured"\` (JSON, the default) or \`"raw"\` (HTML). We recommend structured. With raw, each results page comes back as a block: its page number, its size in bytes, then its HTML. At most ${RAW_HTML_BUDGET} characters of markup are sent per call, filled in page order, and a page past that budget carries only its number and size; the HTTP API's POST /v1/search returns every page whole. \`page\`, \`searchCount\`, \`dateRange\` and \`sortBy\` work with raw, billed as structured results are.
+\`\`\`json
+{ "query": "heat pump grants", "format": "raw" }
+\`\`\`
+
+**Returns:** the ranked organic results as numbered lines, each with position (its place in this response), title, URL and snippet; a title is followed by its Google rank when that differs from the position, as it does from \`page\` 2 on. A result whose destination Google hid is still listed, with "(no link)" in place of its URL. When the page carried more, an "Also on the page" JSON block follows with every surface Google rendered — present only when the page carried it, and only Google returns them:
 - \`entity\` — the knowledge panel for the one business or person the query named: title, subtitle, description and its source, rating, reviews, website, labelled attributes (address, phone, hours…), social profiles. Often the whole answer for a business query, with no results.
 - \`places\` — local-pack business listings: name, category, rating, reviews, address, phone, hours, url, mapsUrl. Read entity and places before treating empty results as no answer.
 - \`overviews\` — Google's AI overviews: the first entry with no topic is the query's own summary, entries with a topic and question are the "Things to know" tabs, declined: true marks a frame Google did not fill. Each has text and the cited sources as { title, url } — fetch those to verify a claim.
 - \`peopleAlsoAsk\` (questions only; answers are not on the page), \`relatedSearches\`, \`answers\` (localTime, currency, unitConversion, weather, translation, sports or flights), \`spelling\` (substituted or suggested correction).
 - \`ads\`, \`videos\`, \`shortVideos\`, \`discussions\`, \`images\`, \`sitelinks\` — each entry with position, title and url.
-- \`paging\` — { pages, complete }, only when searchCount was sent. pages is how many results pages answered, each billed as one search. complete: false means the search was cut short (a later page could not be fetched, or the time budget ran out before searchCount) and results holds what was collected; fewer results with complete: true means Google had no more, the 36-page cap was reached, or the first page carried no organic results (a local pack or knowledge panel alone is not paged). Surfaces describe the first page only; positions run on across pages.
+- \`paging\` — { pages, complete, stoppedBy }, only when searchCount was sent. pages is how many results pages answered, each billed as one search. stoppedBy is why paging stopped: search_count (the count was reached), end_of_results (Google had no more, or the first page carried no organic results), page_cap (the 36-page limit; Google may have more), page_failed (a later page could not be fetched) or deadline (the time budget ran out). complete is false only for page_failed and deadline, and results then holds what was collected. Surfaces describe the first page only; positions run on across pages.
 
 A snippet is not the page, and an overview is not a source. To read a result, call web_access_fetch on its URL before answering from it.
 `,
@@ -574,19 +646,71 @@ A snippet is not the page, and an overview is not a source. To read a result, ca
 				.describe(
 					`Organic results wanted, 1 to ${SEARCH_COUNT_MAX}. Google is paged, up to 36 pages, until that many are in hand or it has no more, and each page is billed as one search. Omit for one page (about 10 results).`,
 				),
+			page: z
+				.number()
+				.int()
+				.min(1)
+				.max(SEARCH_PAGE_MAX)
+				.optional()
+				.describe(
+					`Google only: the results page to start from, an integer from 1 to ${SEARCH_PAGE_MAX} (default 1), where page N is the page Google shows as N. Without searchCount the response is that one page; with it, searchCount results are collected starting from that page. page and searchCount together stay within the first ${SEARCH_COUNT_MAX} results: (page-1)*${SEARCH_PAGE_SIZE} + (searchCount, or ${SEARCH_PAGE_SIZE}) must be at most ${SEARCH_COUNT_MAX}. A page past the last result returns zeroResults true. A page holds about 8 to 10 results, so separate page calls can repeat or skip a result; use one call with searchCount for a list without repeats.`,
+				),
+			dateRange: z
+				.union([
+					z.enum(SEARCH_DATE_WINDOWS),
+					z
+						.object({
+							from: isoDate("First day of the range, inclusive, YYYY-MM-DD.").optional(),
+							to: isoDate("Last day of the range, inclusive, YYYY-MM-DD.").optional(),
+						})
+						.strict()
+						.refine((r) => r.from !== undefined || r.to !== undefined, "a custom dateRange needs from, to, or both")
+						// ISO dates of one fixed width compare correctly as strings.
+						.refine((r) => r.from === undefined || r.to === undefined || r.from <= r.to, "dateRange.from must not be after dateRange.to"),
+				])
+				.optional()
+				.describe(
+					"Google only: limit results to a publication window. One of 'hour', 'day', 'week', 'month' or 'year' for the past hour through the past year, or {from, to} for a custom range of ISO dates (YYYY-MM-DD), inclusive; either end is optional but at least one is required, and from must not be after to.",
+				),
+			sortBy: z
+				.enum(["relevance", "date"])
+				.optional()
+				.describe("Google only: 'relevance' (the default) or 'date' for the newest results first."),
+			format: z
+				.enum(["structured", "raw"])
+				.optional()
+				.describe(
+					`Google only: 'structured' (JSON, the default and recommended) or 'raw' (HTML), at most ${RAW_HTML_BUDGET} characters of markup per call in page order. page, searchCount, dateRange and sortBy work with raw.`,
+				),
 		},
 	},
-	async ({ query, searchCount }) => {
+	async ({ query, searchCount, page, dateRange, sortBy, format }) => {
 		try {
+			if (page !== undefined) {
+				const skipped = (page - 1) * SEARCH_PAGE_SIZE;
+				const wanted = searchCount ?? SEARCH_PAGE_SIZE;
+				if (skipped + wanted > SEARCH_COUNT_MAX) {
+					throw new Error(
+						`page ${page} starts at result ${skipped + 1}, so searchCount may be at most ${SEARCH_COUNT_MAX - skipped}: page and searchCount together stay within the first ${SEARCH_COUNT_MAX} results`,
+					);
+				}
+			}
 			const data = await apiRequestJson<SearchResponse>("/search", {
-				body: { query, ...(searchCount !== undefined ? { searchCount } : {}) },
+				body: {
+					query,
+					...(searchCount !== undefined ? { searchCount } : {}),
+					...(page !== undefined ? { page } : {}),
+					...(dateRange !== undefined ? { dateRange } : {}),
+					...(sortBy !== undefined ? { sortBy } : {}),
+					...(format !== undefined ? { format } : {}),
+				},
 			});
 
 			return {
 				content: [
 					{
 						type: "text" as const,
-						text: formatSearch(data),
+						text: format === "raw" ? formatRawPages(data.pages ?? []) : formatSearch(data),
 					},
 				],
 			};
