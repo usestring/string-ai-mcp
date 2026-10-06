@@ -41,14 +41,23 @@ test("search passes the Google options through and validates them", async () => 
     const raw = await search({ format: "raw", searchCount: 30 });
     assert.ok(!raw.isError, JSON.stringify(raw));
     const text = raw.content[0].text;
-    assert.ok(text.startsWith("Page 1 · 160 bytes\nHTML:\n<!doctype html>"), text.slice(0, 200));
+    assert.match(text, /^\d+ bytes · truncated: true\nHTML \(cut short by the 60000-character budget per call\):\n<!doctype html>/);
+    assert.ok(Number(text.split(" ")[0]) > 140_000, text.slice(0, 80));
     assert.ok(text.includes('<a href="https://a.example/"><h3>'), "markup altered");
     assert.ok(text.includes('{"query":"q","searchCount":30,"format":"raw"}'), "request not forwarded as sent");
-    assert.ok(text.includes("Page 2 · 140026 bytes\nHTML (cut short by the 60000-character budget per call):"));
-    assert.ok(text.includes("Page 3 · 31 bytes\nHTML (cut short by the 60000-character budget per call, none left for this page):"));
-    assert.ok(!text.includes("three"), "page past the budget still carried markup");
-    assert.ok(!/htmlSource|resolved link/i.test(text), "raw text still names fields the contract dropped");
-    assert.ok(text.length < 61_000 + 2_000, `raw text is ${text.length} characters`);
+    assert.ok(text.endsWith("</h3></a>"), "cut was not at a tag boundary");
+    assert.ok(!text.includes("tail"), "markup past the budget was sent");
+    assert.ok(!/Page \d|htmlSource|resolved link/i.test(text), "raw text still names fields the contract dropped");
+    assert.ok(text.length < 61_000, `raw text is ${text.length} characters`);
+
+    const small = await client.callTool({ name: "web_access_search", arguments: { query: "small", format: "raw" } });
+    const smallHtml = '<!doctype html><html><body><a href="https://a.example/"><h3>{"query":"small","format":"raw"}</h3></a><p>é</p></body></html>';
+    assert.equal(small.content[0].text, `${Buffer.byteLength(smallHtml)} bytes · truncated: false\nHTML:\n${smallHtml}`);
+
+    const legacy = await client.callTool({ name: "web_access_search", arguments: { query: "legacy", format: "raw" } });
+    assert.ok(!legacy.isError, JSON.stringify(legacy));
+    assert.ok(legacy.content[0].text.endsWith("<p>one</p><p>two</p></body></html>"), legacy.content[0].text);
+    assert.ok(legacy.content[0].text.includes("truncated: false\nHTML:\n<!doctype html>"), legacy.content[0].text);
 
     for (const bad of [
       { page: 0 },

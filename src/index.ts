@@ -122,16 +122,8 @@ interface SearchResult {
  * only when the page carried it and is never merged into results; only Google returns them.
  * The full shape is documented at https://docs.usestring.ai/docs/api-reference/search#response.
  */
-/** One results page of a format "raw" search, as HTML. */
-interface SearchRawPage {
-	page: number;
-	html: string;
-	htmlBytes: number;
-}
-
 interface SearchResponse {
 	results: SearchResult[];
-	pages?: SearchRawPage[];
 	zeroResults?: boolean;
 	paging?: { pages: number; complete: boolean; stoppedBy?: string };
 	[surface: string]: unknown;
@@ -383,29 +375,33 @@ function formatSearch(data: SearchResponse): string {
 }
 
 /**
- * The most page markup one raw search sends. A long searchCount returns dozens of pages, and a
- * client caps a tool result well below that. Pages share this
- * budget in page order. The HTTP API returns every page whole.
+ * The most markup one raw search sends. A long searchCount returns a page far larger than a
+ * client accepts as a tool result. The HTTP API returns the page whole.
  */
 const RAW_HTML_BUDGET = 60_000;
 
-/** Renders each raw page's number and size, then its markup within RAW_HTML_BUDGET. */
-function formatRawPages(pages: SearchRawPage[]): string {
-	let budget = RAW_HTML_BUDGET;
-	const blocks = pages.map((p) => {
-		let html = p.html;
-		let cut = false;
-		if (html.length > budget) {
-			const tag = html.lastIndexOf("<", budget);
-			html = html.slice(0, tag > 0 ? tag : budget);
-			cut = true;
-		}
-		budget = cut ? 0 : budget - html.length;
-		const head = `Page ${p.page} · ${p.htmlBytes} bytes`;
-		const markup = cut ? `HTML (cut short by the ${RAW_HTML_BUDGET}-character budget per call${html ? "" : ", none left for this page"}):` : "HTML:";
-		return `${head}\n${markup}\n${html}`;
-	});
-	return blocks.join("\n\n") || "No results pages.";
+/**
+ * Reads a raw search's HTML page. The API sends it as text/html; an older API version sent JSON
+ * `pages`, read here in order.
+ */
+async function readRawSearch(res: Response): Promise<string> {
+	const contentType = res.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase();
+	if (contentType !== "application/json") return await res.text();
+	const data = (await res.json()) as { pages?: { html?: string }[] };
+	return (data.pages ?? []).map((p) => p.html ?? "").join("");
+}
+
+/** Renders the raw page's size, then its markup within RAW_HTML_BUDGET, cut at a tag boundary. */
+function formatRawSearch(html: string): string {
+	const bytes = Buffer.byteLength(html, "utf8");
+	const truncated = html.length > RAW_HTML_BUDGET;
+	if (truncated) {
+		const tag = html.lastIndexOf("<", RAW_HTML_BUDGET);
+		html = html.slice(0, tag > 0 ? tag : RAW_HTML_BUDGET);
+	}
+	const head = `${bytes} bytes · truncated: ${truncated}`;
+	const markup = truncated ? `HTML (cut short by the ${RAW_HTML_BUDGET}-character budget per call):` : "HTML:";
+	return `${head}\n${markup}\n${html}`;
 }
 
 const server = new McpServer({
@@ -620,7 +616,7 @@ Search the public web for a query and get ranked organic results back, plus what
 { "query": "heat pump grants", "page": 2, "dateRange": "month", "sortBy": "date" }
 \`\`\`
 
-**Optional Google field:** \`format\` — \`"structured"\` (JSON, the default) or \`"raw"\` (HTML). We recommend structured. With raw, each results page comes back as a block: its page number, its size in bytes, then its HTML. At most ${RAW_HTML_BUDGET} characters of markup are sent per call, filled in page order, and a page past that budget carries only its number and size; the HTTP API's POST /v1/search returns every page whole. \`page\`, \`searchCount\`, \`dateRange\` and \`sortBy\` work with raw, billed as structured results are.
+**Optional Google field:** \`format\` — \`"structured"\` (JSON, the default and recommended) or \`"raw"\` (a single HTML page containing all the results). With raw, the response gives the page's size in bytes and whether it was truncated, then its HTML. At most ${RAW_HTML_BUDGET} characters of markup are sent per call, cut at a tag boundary; the HTTP API's POST /v1/search returns the page whole. \`page\`, \`searchCount\`, \`dateRange\` and \`sortBy\` work with raw, billed as structured results are.
 \`\`\`json
 { "query": "heat pump grants", "format": "raw" }
 \`\`\`
@@ -680,7 +676,7 @@ A snippet is not the page, and an overview is not a source. To read a result, ca
 				.enum(["structured", "raw"])
 				.optional()
 				.describe(
-					`Google only: 'structured' (JSON, the default and recommended) or 'raw' (HTML), at most ${RAW_HTML_BUDGET} characters of markup per call in page order. page, searchCount, dateRange and sortBy work with raw.`,
+					`Google only: 'structured' (JSON, the default and recommended) or 'raw' (a single HTML page containing all the results), at most ${RAW_HTML_BUDGET} characters of markup per call. page, searchCount, dateRange and sortBy work with raw.`,
 				),
 		},
 	},
@@ -695,7 +691,7 @@ A snippet is not the page, and an overview is not a source. To read a result, ca
 					);
 				}
 			}
-			const data = await apiRequestJson<SearchResponse>("/search", {
+			const res = await apiFetch("/search", {
 				body: {
 					query,
 					...(searchCount !== undefined ? { searchCount } : {}),
@@ -705,12 +701,13 @@ A snippet is not the page, and an overview is not a source. To read a result, ca
 					...(format !== undefined ? { format } : {}),
 				},
 			});
+			const text = format === "raw" ? formatRawSearch(await readRawSearch(res)) : formatSearch((await res.json()) as SearchResponse);
 
 			return {
 				content: [
 					{
 						type: "text" as const,
-						text: format === "raw" ? formatRawPages(data.pages ?? []) : formatSearch(data),
+						text,
 					},
 				],
 			};
