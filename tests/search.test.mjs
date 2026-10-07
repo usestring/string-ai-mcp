@@ -38,13 +38,13 @@ test("search passes the Google options through and validates them", async () => 
     assert.ok(plain.content[0].text.includes("2. Hidden\n   (no link: Google hid the destination)\n   no destination"), plain.content[0].text);
     assert.ok(!plain.content[0].text.includes("undefined"), "a result without url printed undefined");
 
-    const raw = await search({ format: "raw", searchCount: 30 });
+    const raw = await search({ format: "raw", page: 2 });
     assert.ok(!raw.isError, JSON.stringify(raw));
     const text = raw.content[0].text;
     assert.match(text, /^\d+ bytes · truncated: true\nHTML \(cut short by the 60000-character budget per call\):\n<!doctype html>/);
     assert.ok(Number(text.split(" ")[0]) > 140_000, text.slice(0, 80));
     assert.ok(text.includes('<a href="https://a.example/"><h3>'), "markup altered");
-    assert.ok(text.includes('{"query":"q","searchCount":30,"format":"raw"}'), "request not forwarded as sent");
+    assert.ok(text.includes('{"query":"q","page":2,"format":"raw"}'), "request not forwarded as sent");
     assert.ok(text.endsWith("</h3></a>"), "cut was not at a tag boundary");
     assert.ok(!text.includes("tail"), "markup past the budget was sent");
     assert.ok(!/Page \d|htmlSource|resolved link/i.test(text), "raw text still names fields the contract dropped");
@@ -71,6 +71,7 @@ test("search passes the Google options through and validates them", async () => 
       { dateRange: { from: "2024-01-01", until: "2024-02-01" } },
       { sortBy: "newest" },
       { format: "html" },
+      { format: "raw", searchCount: 20 },
     ]) {
       const result = await search(bad).catch((err) => ({ isError: true, content: [{ text: String(err) }] }));
       assert.equal(result.isError, true, `${JSON.stringify(bad)} was accepted`);

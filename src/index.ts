@@ -375,8 +375,8 @@ function formatSearch(data: SearchResponse): string {
 }
 
 /**
- * The most markup one raw search sends. A long searchCount returns a page far larger than a
- * client accepts as a tool result. The HTTP API returns the page whole.
+ * The most markup one raw search sends. A raw results page can be larger than a client
+ * accepts as a tool result. The HTTP API returns the page whole.
  */
 const RAW_HTML_BUDGET = 60_000;
 
@@ -598,7 +598,7 @@ Search the public web for a query and get ranked organic results back, plus what
 **Best for:** a request that names no URL, or one that needs sources found before anything is read.
 **Not for:** a URL you already have — use web_access_fetch instead.
 
-**Optional request field:** \`searchCount\` — how many organic results you want, an integer from 1 to ${SEARCH_COUNT_MAX} (above ${SEARCH_COUNT_MAX} is rejected). Google is paged, up to 36 pages, until that many are in hand; each page is billed as one search. Many queries run out before 300: Google often has 100-200 results for a query, and you get what it has, with \`paging.stoppedBy: "end_of_results"\`. Omit it for one page, about 10 results.
+**Optional request field:** \`searchCount\` — how many organic results you want, an integer from 1 to ${SEARCH_COUNT_MAX} (above ${SEARCH_COUNT_MAX} is rejected). Google is paged, up to 36 pages, until that many are in hand; each page is billed as one search. Many queries run out before 300: Google often has 100-200 results for a query, and you get what it has, with \`paging.stoppedBy: "end_of_results"\`. Omit it for one page, about 10 results. Not with \`format: "raw"\`, which returns one page per call.
 
 **Usage Example:**
 \`\`\`json
@@ -616,7 +616,7 @@ Search the public web for a query and get ranked organic results back, plus what
 { "query": "heat pump grants", "page": 2, "dateRange": "month", "sortBy": "date" }
 \`\`\`
 
-**Optional Google field:** \`format\` — \`"structured"\` (JSON, the default and recommended) or \`"raw"\` (a single HTML page containing all the results). With raw, the response gives the page's size in bytes and whether it was truncated, then its HTML. At most ${RAW_HTML_BUDGET} characters of markup are sent per call, cut at a tag boundary; the HTTP API's POST /v1/search returns the page whole. \`page\`, \`searchCount\`, \`dateRange\` and \`sortBy\` work with raw, billed as structured results are.
+**Optional Google field:** \`format\` — \`"structured"\` (JSON, the default and recommended) or \`"raw"\` (the Google results page as HTML, one page per call). With raw, the response gives the page's size in bytes and whether it was truncated, then its HTML. At most ${RAW_HTML_BUDGET} characters of markup are sent per call, cut at a tag boundary; the HTTP API's POST /v1/search returns the page whole. Raw supports \`page\` only, not \`searchCount\`: a raw call with \`searchCount\` is rejected (the API answers 400), so ask for page N with \`page\` and send one call per page, each billed as one search. \`dateRange\` and \`sortBy\` work with raw.
 \`\`\`json
 { "query": "heat pump grants", "format": "raw" }
 \`\`\`
@@ -640,7 +640,7 @@ A snippet is not the page, and an overview is not a source. To read a result, ca
 				.max(SEARCH_COUNT_MAX)
 				.optional()
 				.describe(
-					`Organic results wanted, 1 to ${SEARCH_COUNT_MAX}. Google is paged, up to 36 pages, until that many are in hand or it has no more, and each page is billed as one search. Omit for one page (about 10 results).`,
+					`Organic results wanted, 1 to ${SEARCH_COUNT_MAX}. Google is paged, up to 36 pages, until that many are in hand or it has no more, and each page is billed as one search. Omit for one page (about 10 results). Not with format raw, which returns one page per call; use page there.`,
 				),
 			page: z
 				.number()
@@ -676,12 +676,16 @@ A snippet is not the page, and an overview is not a source. To read a result, ca
 				.enum(["structured", "raw"])
 				.optional()
 				.describe(
-					`Google only: 'structured' (JSON, the default and recommended) or 'raw' (a single HTML page containing all the results), at most ${RAW_HTML_BUDGET} characters of markup per call. page, searchCount, dateRange and sortBy work with raw.`,
+					`Google only: 'structured' (JSON, the default and recommended) or 'raw' (the Google results page as HTML, one page per call), at most ${RAW_HTML_BUDGET} characters of markup per call. Raw supports page only: searchCount is rejected with raw, so send one call per page. dateRange and sortBy work with raw.`,
 				),
 		},
 	},
 	async ({ query, searchCount, page, dateRange, sortBy, format }) => {
 		try {
+			// The API answers the same 400.
+			if (format === "raw" && searchCount !== undefined) {
+				throw new Error('searchCount does not apply to format "raw"; raw answers one Google results page per request, so use page');
+			}
 			if (page !== undefined) {
 				const skipped = (page - 1) * SEARCH_PAGE_SIZE;
 				const wanted = searchCount ?? SEARCH_PAGE_SIZE;
