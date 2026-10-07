@@ -3,14 +3,18 @@ globalThis.fetch = async (input, options) => {
   const body = JSON.parse(options.body);
   if (body.format === "raw") {
     const big = "<p>" + "r".repeat(70000) + "</p>";
-    return Response.json({
-      pages: [
-        { page: 1, html: `<!doctype html><html><body><a href="https://a.example/"><h3>${JSON.stringify(body)}</h3></a></body></html>`, htmlBytes: 160 },
-        { page: 2, html: `<html><body>${big}${big}</body></html>`, htmlBytes: 140026 },
-        { page: 3, html: "<html><body>three</body></html>", htmlBytes: 31 },
-      ],
-      paging: { pages: 3, complete: true, stoppedBy: "search_count" },
-    });
+    const head = `<!doctype html><html><body><a href="https://a.example/"><h3>${JSON.stringify(body)}</h3></a>`;
+    if (body.query === "legacy") {
+      return Response.json({
+        pages: [
+          { page: 1, html: `${head}<p>one</p>`, htmlBytes: 0 },
+          { page: 2, html: "<p>two</p></body></html>", htmlBytes: 0 },
+        ],
+        paging: { pages: 2, complete: true, stoppedBy: "search_count" },
+      });
+    }
+    const html = body.query === "small" ? `${head}<p>é</p></body></html>` : `${head}${big}${big}<p>tail</p></body></html>`;
+    return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" } });
   }
   return Response.json({
     results: [
