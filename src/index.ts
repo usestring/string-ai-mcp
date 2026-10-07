@@ -114,6 +114,51 @@ interface SearchResult {
 	url?: string;
 	snippet: string;
 	displayUrl?: string;
+	/** A videos-tab row's channel, platform and duration. */
+	video?: { channel?: string; platform?: string; duration?: string };
+	/** A books-tab row's authors and publication date. */
+	book?: { authors?: string[]; published?: string };
+}
+
+/** One image of a searchType images answer: url is the page it is on, imageUrl the file. */
+interface SearchImage {
+	position: number;
+	title: string;
+	url?: string;
+	source?: string;
+	imageUrl?: string;
+	imageWidth?: number;
+	imageHeight?: number;
+	thumbnail?: string;
+}
+
+/** One product card of a searchType shopping answer. Google gives a card no destination URL. */
+interface SearchProduct {
+	position: number;
+	title: string;
+	productId?: string;
+	price?: string;
+	originalPrice?: string;
+	merchant?: string;
+	moreMerchants?: boolean;
+	delivery?: string;
+	returns?: string;
+	rating?: number;
+	reviews?: number;
+}
+
+/** One business of the local pack, or of a searchType places answer. */
+interface SearchPlace {
+	position: number;
+	name: string;
+	category?: string;
+	rating?: number;
+	reviews?: number;
+	address?: string;
+	phone?: string;
+	hours?: string;
+	url?: string;
+	mapsUrl?: string;
 }
 
 /**
@@ -152,6 +197,30 @@ const SEARCH_COUNT_MAX = 300;
 const SEARCH_PAGE_SIZE = 10;
 const SEARCH_PAGE_MAX = SEARCH_COUNT_MAX / SEARCH_PAGE_SIZE;
 const SEARCH_DATE_WINDOWS = ["hour", "day", "week", "month", "year"] as const;
+const SEARCH_TYPES = ["web", "images", "videos", "shopping", "books", "places", "forums"] as const;
+type SearchType = (typeof SEARCH_TYPES)[number];
+// dateRange, sortBy and verbatim apply to these tabs only; format raw to web only.
+const SEARCH_DATED_TYPES: readonly SearchType[] = ["web", "videos", "forums"];
+// The results each tab counts per page, and the deepest page it serves: an images page is
+// its whole grid, a places page Google's 20, and Google does not page the shopping tab.
+const SEARCH_TYPE_PAGE_SIZE: Record<SearchType, number> = {
+	web: SEARCH_PAGE_SIZE,
+	videos: SEARCH_PAGE_SIZE,
+	books: SEARCH_PAGE_SIZE,
+	forums: SEARCH_PAGE_SIZE,
+	places: 20,
+	images: 100,
+	shopping: 61,
+};
+const SEARCH_TYPE_PAGE_MAX: Record<SearchType, number> = {
+	web: SEARCH_PAGE_MAX,
+	videos: SEARCH_PAGE_MAX,
+	books: SEARCH_PAGE_MAX,
+	forums: SEARCH_PAGE_MAX,
+	places: SEARCH_COUNT_MAX / 20,
+	images: 3,
+	shopping: 1,
+};
 
 const isoDate = (what: string) =>
 	z
@@ -356,20 +425,78 @@ function productHelpExcerpt(question: string, body: string, limit: number): stri
 	return selected.sort((a, b) => a.index - b.index).map(({ text }) => text).join("\n\n");
 }
 
-/** Renders the ranked documents as numbered lines and appends every surface the page carried, as JSON. */
-function formatSearch(data: SearchResponse): string {
-	const results = data.results
-		.map((r) => {
-			const title = r.rank !== undefined && r.rank !== r.position ? `${r.title} (Google rank ${r.rank})` : r.title;
-			const url = r.url ?? "(no link: Google hid the destination)";
-			return `${r.position}. ${title}\n   ${url}\n   ${r.snippet}`;
-		})
-		.join("\n\n");
+const joined = (parts: (string | undefined)[]): string => parts.filter((p) => p !== undefined && p !== "").join(" · ");
+
+const ratingText = (rating?: number, reviews?: number): string | undefined =>
+	rating === undefined ? undefined : `rated ${rating}${reviews !== undefined ? ` (${reviews} reviews)` : ""}`;
+
+/** One numbered entry: the title line, then each non-empty detail line indented under it. */
+function searchEntry(position: number, title: string, lines: string[]): string {
+	return [`${position}. ${title}`, ...lines.filter((l) => l !== "").map((l) => `   ${l}`)].join("\n");
+}
+
+function formatResult(r: SearchResult): string {
+	const title = r.rank !== undefined && r.rank !== r.position ? `${r.title} (Google rank ${r.rank})` : r.title;
+	return searchEntry(r.position, title, [
+		r.url ?? "(no link: Google hid the destination)",
+		r.snippet,
+		r.video ? `video: ${joined([r.video.channel, r.video.platform, r.video.duration])}` : "",
+		r.book ? joined([r.book.authors?.length ? `by ${r.book.authors.join(", ")}` : undefined, r.book.published]) : "",
+	]);
+}
+
+function formatImage(i: SearchImage): string {
+	const size = i.imageWidth && i.imageHeight ? `${i.imageWidth}×${i.imageHeight}` : undefined;
+	return searchEntry(i.position, i.title, [
+		joined([i.imageUrl ?? "(no image file)", size]),
+		`on ${joined([i.url ?? "(no link)", i.source])}`,
+	]);
+}
+
+function formatProduct(p: SearchProduct): string {
+	return searchEntry(p.position, p.title, [
+		joined([
+			p.price,
+			p.originalPrice && `was ${p.originalPrice}`,
+			p.merchant && (p.moreMerchants ? `${p.merchant} and more merchants` : p.merchant),
+			ratingText(p.rating, p.reviews),
+		]),
+		joined([p.delivery, p.returns]),
+		p.productId ? `productId ${p.productId}` : "",
+	]);
+}
+
+function formatPlace(p: SearchPlace): string {
+	return searchEntry(p.position, p.name, [
+		joined([p.category, ratingText(p.rating, p.reviews)]),
+		joined([p.address, p.phone, p.hours]),
+		joined([p.url, p.mapsUrl]),
+	]);
+}
+
+const listOf = <T>(value: unknown): T[] => (value as T[] | undefined) ?? [];
+
+/**
+ * Renders the answer as numbered lines and appends every surface the page carried, as JSON. The
+ * images, shopping and places tabs answer in their own list rather than results, so that list
+ * becomes the numbered lines and leaves the surfaces block.
+ */
+function formatSearch(data: SearchResponse, searchType: SearchType = "web"): string {
+	const [answer, entries]: [string | undefined, string[]] =
+		searchType === "images"
+			? ["images", listOf<SearchImage>(data.images).map(formatImage)]
+			: searchType === "shopping"
+				? ["products", listOf<SearchProduct>(data.products).map(formatProduct)]
+				: searchType === "places"
+					? ["places", listOf<SearchPlace>(data.places).map(formatPlace)]
+					: [undefined, data.results.map(formatResult)];
 	const surfaces: Record<string, unknown> = {};
 	for (const name of SEARCH_SURFACES) {
-		if (data[name] !== undefined) surfaces[name] = data[name];
+		if (name !== answer && data[name] !== undefined) surfaces[name] = data[name];
 	}
-	const head = results || (data.zeroResults ? "No results: the engine reported that nothing matched." : "No ranked documents.");
+	const head =
+		entries.join("\n\n") ||
+		(data.zeroResults ? "No results: the engine reported that nothing matched." : answer ? `No ${answer}.` : "No ranked documents.");
 	if (Object.keys(surfaces).length === 0) return head;
 	return `${head}\n\nAlso on the page (${Object.keys(surfaces).join(", ")}):\n${JSON.stringify(surfaces, null, 2)}`;
 }
@@ -593,7 +720,7 @@ server.registerTool(
 		title: "Search the web",
 		annotations: { readOnlyHint: true, openWorldHint: true },
 		description: `
-Search the public web for a query and get ranked organic results back, plus whatever Google rendered around them: knowledge panel, AI overview, People also ask, local pack, videos, discussions.
+Search the public web for a query and get ranked organic results back, plus whatever Google rendered around them: knowledge panel, AI overview, People also ask, local pack, videos, discussions. Google's images, videos, shopping, books, places and forums tabs are searched with \`searchType\`.
 
 **Best for:** a request that names no URL, or one that needs sources found before anything is read.
 **Not for:** a URL you already have — use web_access_fetch instead.
@@ -606,6 +733,21 @@ Search the public web for a query and get ranked organic results back, plus what
 \`\`\`
 \`\`\`json
 { "query": "construction consulting firms Ohio", "searchCount": 30 }
+\`\`\`
+
+**Optional Google field:** \`searchType\` — the Google tab to search: \`"web"\` (the default, the ordinary results page), \`"images"\`, \`"videos"\`, \`"shopping"\`, \`"books"\`, \`"places"\` or \`"forums"\`. There is no news tab. Each page fetched is billed as one search, as on the web.
+- \`videos\`, \`books\`, \`forums\` answer results, paged like the web; each video carries its channel, platform and duration and each book its authors and publication date.
+- \`images\` answers images, about 100 a page, each with its title, the page it is on, the source, the image file and its size. It has 3 pages; \`searchCount\` up to ${SEARCH_COUNT_MAX} collects across them, usually about 270 images.
+- \`shopping\` answers products, the one page of about 55 product cards: title, productId, price and original price as shown, merchant, delivery, returns, rating, reviews. A card has no URL. Google does not page this tab, so \`page\` must be 1.
+- \`places\` answers places, 20 businesses a page, paged like the web up to page ${SEARCH_TYPE_PAGE_MAX.places}.
+\`dateRange\`, \`sortBy\` and \`verbatim\` apply to web, videos and forums only; \`format: "raw"\` to web only.
+\`\`\`json
+{ "query": "eames lounge chair", "searchType": "images", "searchCount": 150 }
+\`\`\`
+
+**Optional Google filters:** \`safeSearch\` — \`true\` removes explicit results; \`includeOmittedResults\` — \`true\` includes the results Google hides as very similar to ones shown; \`autocorrect\` — \`false\` searches the query exactly as typed instead of Google's correction; \`restrictCountry\` — a two-letter code — keeps only pages from that country; \`verbatim\` — \`true\` matches the words exactly, without synonyms.
+\`\`\`json
+{ "query": "climate policy", "restrictCountry": "FR", "safeSearch": true }
 \`\`\`
 
 **Optional Google fields:** \`page\`, \`dateRange\` and \`sortBy\` apply to Google results only.
@@ -621,7 +763,7 @@ Search the public web for a query and get ranked organic results back, plus what
 { "query": "heat pump grants", "format": "raw" }
 \`\`\`
 
-**Returns:** the ranked organic results as numbered lines, each with position (its place in this response), title, URL and snippet; a title is followed by its Google rank when that differs from the position, as it does from \`page\` 2 on. A result whose destination Google hid is still listed, with "(no link)" in place of its URL. When the page carried more, an "Also on the page" JSON block follows with every surface Google rendered — present only when the page carried it, and only Google returns them:
+**Returns:** the ranked organic results as numbered lines, each with position (its place in this response), title, URL and snippet; a title is followed by its Google rank when that differs from the position, as it does from \`page\` 2 on. A result whose destination Google hid is still listed, with "(no link)" in place of its URL. With \`searchType\` \`"images"\`, \`"shopping"\` or \`"places"\`, the numbered lines are the images, product cards or places instead, and there are no results. When the page carried more, an "Also on the page" JSON block follows with every surface Google rendered — present only when the page carried it, and only Google returns them:
 - \`entity\` — the knowledge panel for the one business or person the query named: title, subtitle, description and its source, rating, reviews, website, labelled attributes (address, phone, hours…), social profiles. Often the whole answer for a business query, with no results.
 - \`places\` — local-pack business listings: name, category, rating, reviews, address, phone, hours, url, mapsUrl. Read entity and places before treating empty results as no answer.
 - \`overviews\` — Google's AI overviews: the first entry with no topic is the query's own summary, entries with a topic and question are the "Things to know" tabs, declined: true marks a frame Google did not fill. Each has text and the cited sources as { title, url } — fetch those to verify a claim.
@@ -666,29 +808,68 @@ A snippet is not the page, and an overview is not a source. To read a result, ca
 				])
 				.optional()
 				.describe(
-					"Google only: limit results to a publication window. One of 'hour', 'day', 'week', 'month' or 'year' for the past hour through the past year, or {from, to} for a custom range of ISO dates (YYYY-MM-DD), inclusive; either end is optional but at least one is required, and from must not be after to.",
+					"Google only: limit results to a publication window. One of 'hour', 'day', 'week', 'month' or 'year' for the past hour through the past year, or {from, to} for a custom range of ISO dates (YYYY-MM-DD), inclusive; either end is optional but at least one is required, and from must not be after to. Web, videos and forums only.",
 				),
 			sortBy: z
 				.enum(["relevance", "date"])
 				.optional()
-				.describe("Google only: 'relevance' (the default) or 'date' for the newest results first."),
+				.describe("Google only: 'relevance' (the default) or 'date' for the newest results first. Web, videos and forums only."),
 			format: z
 				.enum(["structured", "raw"])
 				.optional()
 				.describe(
-					`Google only: 'structured' (JSON, the default and recommended) or 'raw' (the Google results page as HTML, one page per call), at most ${RAW_HTML_BUDGET} characters of markup per call. Raw supports page only: searchCount is rejected with raw, so send one call per page. dateRange and sortBy work with raw.`,
+					`Google only: 'structured' (JSON, the default and recommended) or 'raw' (the Google results page as HTML, one page per call), at most ${RAW_HTML_BUDGET} characters of markup per call. Raw supports page only: searchCount is rejected with raw, so send one call per page. dateRange and sortBy work with raw. Web only.`,
 				),
+			searchType: z
+				.enum(SEARCH_TYPES)
+				.optional()
+				.describe(
+					"Google only: the tab to search. 'web' (the default) is the results page; 'videos', 'books' and 'forums' answer results; 'images' answers images (3 pages of about 100); 'shopping' answers products (one page of about 55, so page must be 1); 'places' answers places (20 a page). No news tab.",
+				),
+			safeSearch: z.boolean().optional().describe("Google only: true removes explicit results (SafeSearch)."),
+			includeOmittedResults: z
+				.boolean()
+				.optional()
+				.describe("Google only: true includes the results Google omits as very similar to ones already shown."),
+			autocorrect: z
+				.boolean()
+				.optional()
+				.describe("Google only: false searches the query exactly as typed rather than Google's corrected spelling. On by default."),
+			restrictCountry: z
+				.string()
+				.regex(/^[A-Za-z]{2}$/, "must be a two-letter ISO 3166-1 alpha-2 code")
+				.optional()
+				.describe(
+					"Google only: keep only results from pages in this country, a two-letter ISO code such as 'FR'. It does not change where the search runs from.",
+				),
+			verbatim: z
+				.boolean()
+				.optional()
+				.describe("Google only: true matches the query's words exactly, without synonyms or stemming. Web, videos and forums only."),
 		},
 	},
-	async ({ query, searchCount, page, dateRange, sortBy, format }) => {
+	async ({ query, searchCount, page, dateRange, sortBy, format, searchType, safeSearch, includeOmittedResults, autocorrect, restrictCountry, verbatim }) => {
 		try {
-			// The API answers the same 400.
+			const tab = searchType ?? "web";
+			// The API answers the same 400s.
 			if (format === "raw" && searchCount !== undefined) {
 				throw new Error('searchCount does not apply to format "raw"; raw answers one Google results page per request, so use page');
 			}
+			const dated = SEARCH_DATED_TYPES.includes(tab);
+			for (const [set, name, applies, where] of [
+				[dateRange !== undefined, "dateRange", dated, SEARCH_DATED_TYPES.join(", ")],
+				[sortBy !== undefined, "sortBy", dated, SEARCH_DATED_TYPES.join(", ")],
+				[verbatim === true, "verbatim", dated, SEARCH_DATED_TYPES.join(", ")],
+				[format === "raw", "format raw", tab === "web", "web"],
+			] as const) {
+				if (set && !applies) throw new Error(`${name} applies only to searchType ${where}, got "${tab}"`);
+			}
 			if (page !== undefined) {
-				const skipped = (page - 1) * SEARCH_PAGE_SIZE;
-				const wanted = searchCount ?? SEARCH_PAGE_SIZE;
+				const lastPage = SEARCH_TYPE_PAGE_MAX[tab];
+				if (page > lastPage) throw new Error(`page must be between 1 and ${lastPage} for searchType ${tab}, got ${page}`);
+				const pageSize = SEARCH_TYPE_PAGE_SIZE[tab];
+				const skipped = (page - 1) * pageSize;
+				const wanted = searchCount ?? pageSize;
 				if (skipped + wanted > SEARCH_COUNT_MAX) {
 					throw new Error(
 						`page ${page} starts at result ${skipped + 1}, so searchCount may be at most ${SEARCH_COUNT_MAX - skipped}: page and searchCount together stay within the first ${SEARCH_COUNT_MAX} results`,
@@ -703,9 +884,15 @@ A snippet is not the page, and an overview is not a source. To read a result, ca
 					...(dateRange !== undefined ? { dateRange } : {}),
 					...(sortBy !== undefined ? { sortBy } : {}),
 					...(format !== undefined ? { format } : {}),
+					...(searchType !== undefined ? { searchType } : {}),
+					...(safeSearch !== undefined ? { safeSearch } : {}),
+					...(includeOmittedResults !== undefined ? { includeOmittedResults } : {}),
+					...(autocorrect !== undefined ? { autocorrect } : {}),
+					...(restrictCountry !== undefined ? { restrictCountry: restrictCountry.toUpperCase() } : {}),
+					...(verbatim !== undefined ? { verbatim } : {}),
 				},
 			});
-			const text = format === "raw" ? formatRawSearch(await readRawSearch(res)) : formatSearch((await res.json()) as SearchResponse);
+			const text = format === "raw" ? formatRawSearch(await readRawSearch(res)) : formatSearch((await res.json()) as SearchResponse, tab);
 
 			return {
 				content: [

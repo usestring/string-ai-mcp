@@ -82,3 +82,73 @@ test("search passes the Google options through and validates them", async () => 
     await client.close();
   }
 });
+
+test("search sends searchType and the Google filters and renders each tab's answer", async () => {
+  const client = new Client({ name: "search-types-test", version: "1" });
+  const transport = new StdioClientTransport({
+    command: process.execPath,
+    args: ["--import", "./tests/search-fixture.mjs", "build/index.js"],
+    env: { ...process.env, STRING_AI_API_KEY: "synthetic-test-key" },
+    stderr: "pipe",
+  });
+  try {
+    await client.connect(transport);
+    const { tools } = await client.listTools();
+    const props = tools.find((tool) => tool.name === "web_access_search").inputSchema.properties;
+    assert.deepEqual(props.searchType.enum, ["web", "images", "videos", "shopping", "books", "places", "forums"]);
+    for (const name of ["safeSearch", "includeOmittedResults", "autocorrect", "verbatim"]) assert.equal(props[name].type, "boolean", name);
+    assert.equal(props.restrictCountry.type, "string");
+
+    const search = (args) => client.callTool({ name: "web_access_search", arguments: { query: "q", ...args } });
+
+    const filters = { safeSearch: true, includeOmittedResults: true, autocorrect: false, verbatim: true, dateRange: "week" };
+    const filtered = await search({ ...filters, restrictCountry: "fr" });
+    assert.ok(!filtered.isError, JSON.stringify(filtered));
+    assert.deepEqual(JSON.parse(filtered.content[0].text.split("\n")[2].trim()), { query: "q", dateRange: "week", ...filters, restrictCountry: "FR" });
+
+    const images = await search({ searchType: "images", page: 3 });
+    assert.ok(!images.isError, JSON.stringify(images));
+    assert.equal(
+      images.content[0].text,
+      "1. Lounge chair\n   https://img.example/chair.jpg · 1200×800\n   on https://shop.example/chair · shop.example",
+    );
+
+    const products = await search({ searchType: "shopping", searchCount: 50 });
+    assert.equal(
+      products.content[0].text,
+      "1. Lounge chair\n   $5,000 · was $6,000 · Shop and more merchants · rated 4.5 (20 reviews)\n   Free delivery\n   productId 123",
+    );
+
+    const places = await search({ searchType: "places", page: 15 });
+    assert.equal(
+      places.content[0].text,
+      "1. Corner Cafe\n   Coffee shop · rated 4.7 (310 reviews)\n   1 Main St\n   https://cafe.example/ · https://maps.example/cafe",
+    );
+
+    const videos = await search({ searchType: "videos", sortBy: "date" });
+    assert.ok(videos.content[0].text.endsWith("\n   video: Chan · YouTube · 3:10"), videos.content[0].text);
+    assert.deepEqual(JSON.parse(videos.content[0].text.split("\n")[2].trim()), { query: "q", sortBy: "date", searchType: "videos" });
+
+    const books = await search({ searchType: "books" });
+    assert.ok(books.content[0].text.endsWith("\n   by A. Author, B. Author · 2001"), books.content[0].text);
+
+    for (const bad of [
+      { searchType: "news" },
+      { searchType: "images", page: 4 },
+      { searchType: "shopping", page: 2 },
+      { searchType: "places", page: 16 },
+      { searchType: "images", page: 3, searchCount: 101 },
+      { searchType: "books", dateRange: "week" },
+      { searchType: "images", sortBy: "date" },
+      { searchType: "shopping", verbatim: true },
+      { searchType: "videos", format: "raw" },
+      { restrictCountry: "FRA" },
+      { safeSearch: "yes" },
+    ]) {
+      const result = await search(bad).catch((err) => ({ isError: true, content: [{ text: String(err) }] }));
+      assert.equal(result.isError, true, `${JSON.stringify(bad)} was accepted`);
+    }
+  } finally {
+    await client.close();
+  }
+});
