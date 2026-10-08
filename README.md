@@ -2,10 +2,8 @@
 
 The official [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server for
 [String AI](https://usestring.ai)'s Web Access API. Search the web, fetch any URL or send it a
-request, and map a site's URLs — all returned as clean, LLM-ready Markdown. Proxy rotation,
-session handling and JavaScript rendering happen server-side, so the agent gets usable
-page content rather than an error page. Connect any MCP-compatible client — VS Code, Cursor,
-Windsurf, Claude Desktop, and more.
+request, and map a site's URLs — all returned as clean, LLM-ready Markdown. Connect any
+MCP-compatible client — VS Code, Cursor, Windsurf, Claude Desktop, and more.
 
 ## Tools
 
@@ -19,9 +17,7 @@ Windsurf, Claude Desktop, and more.
 | `web_access_report`       | Send one redacted, credit-free failure diagnostic to String support             |
 
 `web_access_fetch`, `web_access_search`, and `web_access_product_help` are read-only. `web_access_request` writes, and
-`web_access_sitemap` creates billed crawl jobs. Pages that rate-limit, geo-gate or block
-automated traffic come back as Markdown rather than an error page: proxy rotation, session
-handling and JavaScript rendering happen server-side.
+`web_access_sitemap` creates billed crawl jobs.
 
 > The six-tool shape above is what the hosted server at `https://mcp.usestring.ai/v1/mcp`
 > serves. The npm package ships five of them: it includes product help and failure reporting but
@@ -199,8 +195,8 @@ tool from the UI.
 
 ## About String AI
 
-[String AI](https://usestring.ai) provides a powerful web access API that handles proxies,
-session handling, and JavaScript rendering automatically. Get your API key at
+[String AI](https://usestring.ai) provides a web access API that returns any page as clean,
+LLM-ready Markdown. Get your API key at
 [usestring.ai](https://usestring.ai).
 
 ## License

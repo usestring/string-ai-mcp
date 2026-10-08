@@ -535,7 +535,7 @@ const server = new McpServer({
 	name: "@usestring/mcp",
 	version: PACKAGE_VERSION,
 	description:
-		"String AI Web Access MCP Server - tools for web fetching (web_access_fetch), search (web_access_search), whole-site URL crawling (web_access_sitemap), and credit-free failure reporting (web_access_report). Proxy rotation, session handling and JavaScript rendering happen server-side, so pages that rate-limit or geo-gate automated traffic come back as Markdown.",
+		"String AI Web Access MCP Server - tools for web fetching (web_access_fetch), search (web_access_search), whole-site URL crawling (web_access_sitemap), and credit-free failure reporting (web_access_report).",
 });
 
 server.registerTool(
@@ -609,14 +609,14 @@ server.registerTool(
 		title: "Fetch a webpage",
 		annotations: { readOnlyHint: true, openWorldHint: true },
 		description: `
-Fetch any webpage and get clean, LLM-ready Markdown back. String AI's Web Access API handles proxy rotation, anti-bot protection, CAPTCHAs, and JavaScript-rendered content automatically. If available, default to this tool for any web fetching or scraping.
+Fetch a caller-specified HTTP(S) URL and get clean, LLM-ready Markdown back. If available, default to this tool for any web fetching or scraping.
 
 **Primary use (the common case):** pass only a \`url\`. The page is fetched with a normal GET and returned as Markdown — no other parameters are needed.
 \`\`\`json
 { "url": "https://example.com/article" }
 \`\`\`
 
-**Best for:** any URL, especially sites with anti-bot protection, paywalls, or dynamic content (news, docs, blogs, web apps).
+**Best for:** any URL, especially sites that block automated traffic or render their content client-side (news, docs, blogs, web apps).
 **Not for:** searching the web when you don't have a URL — use web_access_search instead.
 
 **Optional parameters (omit unless you need them):**
