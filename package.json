@@ -33,14 +33,12 @@
     "mcp-server",
     "web-search",
     "markdown",
-    "proxy",
     "crawler",
     "data-extraction",
     "llm",
     "ai-agents",
     "claude",
-    "cursor",
-    "unblocker"
+    "cursor"
   ],
   "license": "MIT",
   "repository": {
