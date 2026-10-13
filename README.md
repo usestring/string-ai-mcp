@@ -2,10 +2,8 @@
 
 The official [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server for
 [String AI](https://usestring.ai)'s Web Access API. Search the web, fetch any URL or send it a
-request, and map a site's URLs — all returned as clean, LLM-ready Markdown. Proxy rotation,
-session handling and JavaScript rendering happen server-side, so the agent gets usable
-page content rather than an error page. Connect any MCP-compatible client — VS Code, Cursor,
-Windsurf, Claude Desktop, and more.
+request, and map a site's URLs — all returned as clean, LLM-ready Markdown. Connect any
+MCP-compatible client — VS Code, Cursor, Windsurf, Claude Desktop, and more.
 
 ## Tools
 
@@ -14,14 +12,12 @@ Windsurf, Claude Desktop, and more.
 | `web_access_fetch`        | Fetch one URL and get clean, LLM-ready Markdown back                            |
 | `web_access_product_help` | Ask about String products or services; get one source (two for comparisons), with a shared 4 KiB excerpt budget and source links |
 | `web_access_request`      | Send a POST, PUT or PATCH with a body to a URL                                  |
-| `web_access_search`       | Search the web: ranked results plus the knowledge panel, AI overview, local pack and other surfaces Google rendered; optional `searchCount` (1–300) pages Google |
+| `web_access_search`       | Search the web: ranked results plus the knowledge panel, AI overview, local pack and other surfaces Google rendered; optional `searchCount` (1–300) pages Google; `searchType` searches Google's images, videos, shopping, books, places or forums tab; `safeSearch`, `includeOmittedResults`, `autocorrect`, `restrictCountry` and `verbatim` filter it; `page`, `dateRange` and `sortBy` refine a Google search; `format` is `"structured"` (JSON, the default and recommended) or `"raw"` (the Google results page as HTML, one page per call; `page` only, `searchCount` is rejected with raw) |
 | `web_access_sitemap`      | Crawl a site and map its URLs as an asynchronous job, driven by `action`        |
 | `web_access_report`       | Send one redacted, credit-free failure diagnostic to String support             |
 
 `web_access_fetch`, `web_access_search`, and `web_access_product_help` are read-only. `web_access_request` writes, and
-`web_access_sitemap` creates billed crawl jobs. Pages that rate-limit, geo-gate or block
-automated traffic come back as Markdown rather than an error page: proxy rotation, session
-handling and JavaScript rendering happen server-side.
+`web_access_sitemap` creates billed crawl jobs.
 
 > The six-tool shape above is what the hosted server at `https://mcp.usestring.ai/v1/mcp`
 > serves. The npm package ships five of them: it includes product help and failure reporting but
@@ -199,8 +195,8 @@ tool from the UI.
 
 ## About String AI
 
-[String AI](https://usestring.ai) provides a powerful web access API that handles proxies,
-session handling, and JavaScript rendering automatically. Get your API key at
+[String AI](https://usestring.ai) provides a web access API that returns any page as clean,
+LLM-ready Markdown. Get your API key at
 [usestring.ai](https://usestring.ai).
 
 ## License
