@@ -738,7 +738,7 @@ Search the public web for a query and get ranked organic results back, plus what
 **Optional Google field:** \`searchType\` — the Google tab to search: \`"web"\` (the default, the ordinary results page), \`"images"\`, \`"videos"\`, \`"shopping"\`, \`"books"\`, \`"places"\` or \`"forums"\`. There is no news tab. Each page fetched is billed as one search, as on the web.
 - \`videos\`, \`books\`, \`forums\` answer results, paged like the web; each video carries its channel, platform and duration and each book its authors and publication date.
 - \`images\` answers images, about 100 a page, each with its title, the page it is on, the source, the image file and its size. It has 3 pages; \`searchCount\` up to ${SEARCH_COUNT_MAX} collects across them, usually about 270 images.
-- \`shopping\` answers products, the one page of about 55 product cards: title, productId, price and original price as shown, merchant, delivery, returns, rating, reviews. A card has no URL. Google does not page this tab, so \`page\` must be 1.
+- \`shopping\` answers products, the one page of about 55 product cards: title, productId, price and original price as shown, merchant, delivery, returns, rating, reviews. A card has no URL. Google does not page this tab, so \`page\` must be 1. The tab is incomplete, so treat it as a supplement: for a product, price or merchant question, also run the ordinary search (\`searchType\` omitted or \`"web"\`), which usually returns better results and the merchant pages to fetch.
 - \`places\` answers places, 20 businesses a page, paged like the web up to page ${SEARCH_TYPE_PAGE_MAX.places}.
 \`dateRange\`, \`sortBy\` and \`verbatim\` apply to web, videos and forums only; \`format: "raw"\` to web only.
 \`\`\`json
