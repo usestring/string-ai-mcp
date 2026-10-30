@@ -206,3 +206,21 @@ MIT
 ## Security
 
 Please report security vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
+
+## Maintenance and releases
+
+This server may remain unchanged while its tools meet the documented contract.
+Maintenance includes checking runtime and MCP compatibility, investigating reported
+issues, and releasing fixes when needed. Commit frequency alone does not establish
+whether the server works.
+
+Before shipping a change, run `npm test` and `node scripts/check-versions.mjs`.
+The package declares its supported Node.js versions in `package.json`; CI builds
+with Node.js 22. Report compatibility problems through
+[GitHub issues](https://github.com/usestring/string-ai-mcp/issues).
+
+The publish workflow records each published npm version as a
+[GitHub release](https://github.com/usestring/string-ai-mcp/releases), tagged at
+the source commit recorded in the npm package metadata. Release notes describe
+the changes. A manual workflow run can record a missing GitHub release for the
+current published version without republishing the package or changing its version.
