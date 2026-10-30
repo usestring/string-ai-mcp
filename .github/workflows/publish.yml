@@ -20,7 +20,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write # OIDC, which is how the registry authenticates this repo
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -44,6 +43,19 @@ jobs:
             echo "new=true" >> "$GITHUB_OUTPUT"
           fi
 
+      # Both credentials are checked before anything ships, so a missing one
+      # can't leave npm published and the registry entry behind it.
+      - name: Check publish credentials
+        if: steps.check.outputs.new == 'true'
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          MCP_REGISTRY_PRIVATE_KEY: ${{ secrets.MCP_REGISTRY_PRIVATE_KEY }}
+        run: |
+          missing=0
+          [ -n "$NPM_TOKEN" ] || { echo "::error::NPM_TOKEN secret is not set"; missing=1; }
+          [ -n "$MCP_REGISTRY_PRIVATE_KEY" ] || { echo "::error::MCP_REGISTRY_PRIVATE_KEY secret is not set"; missing=1; }
+          exit "$missing"
+
       - if: steps.check.outputs.new == 'true'
         run: npm ci
       - if: steps.check.outputs.new == 'true'
@@ -59,11 +71,16 @@ jobs:
 
       # Second, because the registry entry points at the npm release: publishing
       # it first would advertise a version nobody can install yet.
+      # ai.usestring/* is a domain namespace, which the registry only grants
+      # through DNS or HTTP proof of usestring.ai; GitHub OIDC covers io.github.*
+      # names only. The key pairs with the v=MCPv1 TXT record on usestring.ai.
       - name: Publish the registry entry
         if: steps.check.outputs.new == 'true'
+        env:
+          MCP_REGISTRY_PRIVATE_KEY: ${{ secrets.MCP_REGISTRY_PRIVATE_KEY }}
         run: |
           curl -sSL -o mcp-publisher.tar.gz \
             "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz"
           tar xzf mcp-publisher.tar.gz mcp-publisher
-          ./mcp-publisher login github-oidc
+          ./mcp-publisher login dns --domain=usestring.ai --private-key="$MCP_REGISTRY_PRIVATE_KEY"
           ./mcp-publisher publish
