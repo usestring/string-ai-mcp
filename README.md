@@ -13,20 +13,34 @@ MCP-compatible client — VS Code, Cursor, Windsurf, Claude Desktop, and more.
 | `web_access_product_help` | Ask about String products or services; get one source (two for comparisons), with a shared 4 KiB excerpt budget and source links |
 | `web_access_request`      | Send a POST, PUT or PATCH with a body to a URL                                  |
 | `web_access_search`       | Search the web: ranked results plus the knowledge panel, AI overview, local pack and other surfaces Google rendered; optional `searchCount` (1–300) pages Google; `searchType` searches Google's images, videos, shopping, books, places or forums tab; `safeSearch`, `includeOmittedResults`, `autocorrect`, `restrictCountry` and `verbatim` filter it; `page`, `dateRange` and `sortBy` refine a Google search; `format` is `"structured"` (JSON, the default and recommended) or `"raw"` (the Google results page as HTML, one page per call; `page` only, `searchCount` is rejected with raw) |
-| `web_access_sitemap`      | Crawl a site and map its URLs as an asynchronous job, driven by `action`        |
+| `web_access_sitemap_quote`  | Quote a crawl of one site: estimated pages and cost. Crawls nothing and costs nothing |
+| `web_access_sitemap_start`  | Start a quoted crawl after the user approves the quote; pages are billed as they are fetched |
+| `web_access_sitemap_status` | Poll a crawl's progress, and page through its URLs once it finishes            |
+| `web_access_sitemap`      | Deprecated: the same crawl lifecycle in one tool, driven by `action`            |
 | `web_access_report`       | Send one redacted, credit-free failure diagnostic to String support             |
 
-`web_access_fetch`, `web_access_search`, and `web_access_product_help` are read-only. `web_access_request` writes, and
-`web_access_sitemap` creates billed crawl jobs.
+`web_access_fetch`, `web_access_search`, `web_access_product_help` and `web_access_sitemap_status`
+are read-only. `web_access_request` writes, and `web_access_sitemap_start` (or the deprecated
+`web_access_sitemap`'s `approve`) starts a billed crawl.
 
-> The six-tool shape above is what the hosted server at `https://mcp.usestring.ai/v1/mcp`
-> serves. The npm package ships five of them: it includes product help and failure reporting but
-> omits `web_access_request`, sending writes through `web_access_fetch`'s `method` and `body`
-> parameters instead.
+> The npm package omits `web_access_request` and sends writes through `web_access_fetch`'s
+> `method` and `body` parameters instead. The three `web_access_sitemap_*` tools match the hosted
+> server at `https://mcp.usestring.ai/v3/mcp`.
 
-### `web_access_sitemap` — sitemap crawl jobs
+### `web_access_sitemap_quote`, `web_access_sitemap_start`, `web_access_sitemap_status`
 
-A crawl is a two-phase, asynchronous **quote → approve → poll → read** job:
+A crawl is a **quote → start → poll** job: nothing is crawled or billed until the user approves
+the quote and `web_access_sitemap_start` runs.
+
+| Tool | What it does |
+| --- | --- |
+| `web_access_sitemap_quote` | `url` required; `maxPages` ≤ 10000 default 10, `maxDepth` ≤ 100 default 2, `pathPrefix`, `budgetUsd`, `useSitemap` optional. Returns `jobId` + `estimatedCostUsd` + `estimatedPages`, status `awaiting_approval`. |
+| `web_access_sitemap_start` | Billing consent: starts the quoted crawl. 402 = insufficient funds; 409 `partial_state` = call it again. |
+| `web_access_sitemap_status` | Poll progress: `awaiting_approval` → `running` (`pending`/`processed`) → `completed` \| `failed` \| `canceled` \| `token_cap_exceeded`. Once terminal it also returns `total` and one page of `urls` (`limit` ≤ 5000 default 1000, `offset`). |
+
+### `web_access_sitemap` — sitemap crawl jobs (deprecated)
+
+Use the three tools above instead; this one keeps working for existing callers. A crawl is a two-phase, asynchronous **quote → approve → poll → read** job:
 nothing is crawled or billed until the quote is explicitly approved.
 
 | `action`  | What it does                                                                                       |
@@ -188,7 +202,7 @@ tool from the UI.
 
 1. The IDE spawns this server as a child process and communicates over **stdio**.
 2. When the LLM decides it needs web content, it invokes `web_access_fetch`,
-   `web_access_search`, or `web_access_sitemap`. Every failed call is reported exactly once with
+   `web_access_search`, or the `web_access_sitemap_*` tools. Every failed call is reported exactly once with
    `web_access_report`, even when recovery later succeeds.
 3. This server forwards the request to String AI's Web Access API (using your API key from
    the environment) and returns the result to the LLM.
