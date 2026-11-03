@@ -23,7 +23,7 @@ jobs:
       package-version: ${{ steps.check.outputs.version }}
     permissions:
       contents: read
-      id-token: write # OIDC, which is how the registry authenticates this repo
+      id-token: write # OIDC, which is how npm and the MCP registry authenticate this repo
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -56,11 +56,14 @@ jobs:
       - if: steps.check.outputs.new == 'true'
         run: node scripts/check-versions.mjs
 
+      # npm trusts this workflow file directly (trusted publishing), so there is
+      # no token to store or rotate; the OIDC exchange needs npm 11.5.1 or later,
+      # newer than what Node 22 bundles. It also attaches provenance on its own.
       - name: Publish to npm
         if: steps.check.outputs.new == 'true'
-        run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npm install -g npm@11
+          npm publish --access public
 
       # Second, because the registry entry points at the npm release: publishing
       # it first would advertise a version nobody can install yet.
