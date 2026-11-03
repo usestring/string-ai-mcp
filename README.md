@@ -222,5 +222,7 @@ with Node.js 22. Report compatibility problems through
 The publish workflow records each published npm version as a
 [GitHub release](https://github.com/usestring/string-ai-mcp/releases), tagged at
 the source commit recorded in the npm package metadata. Release notes describe
-the changes. A manual workflow run can record a missing GitHub release for the
-current published version without republishing the package or changing its version.
+the changes. The release job checks npm directly, so a registry publication failure
+does not hide a version that users can already install. A manual workflow run can
+record a missing GitHub release for the current published version without
+republishing the package or changing its version.

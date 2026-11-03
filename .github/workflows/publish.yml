@@ -78,6 +78,7 @@ jobs:
 
   github-release:
     needs: publish
+    if: ${{ !cancelled() && needs.publish.outputs.package-name != '' && needs.publish.outputs.package-version != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
