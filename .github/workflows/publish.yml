@@ -10,6 +10,11 @@ on:
     paths:
       - package.json
   workflow_dispatch:
+    inputs:
+      sync_registry:
+        description: Sync the current published version to the MCP registry
+        type: boolean
+        default: false
 
 concurrency:
   group: publish
@@ -23,7 +28,7 @@ jobs:
       package-version: ${{ steps.check.outputs.version }}
     permissions:
       contents: read
-      id-token: write # OIDC, which is how npm and the MCP registry authenticate this repo
+      id-token: write # OIDC, which is how npm authenticates this repo
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -49,18 +54,17 @@ jobs:
             echo "new=true" >> "$GITHUB_OUTPUT"
           fi
 
-      # Both credentials are checked before anything ships, so a missing one
-      # can't leave npm published and the registry entry behind it.
-      - name: Check publish credentials
-        if: steps.check.outputs.new == 'true'
+      # Check before npm publication so a missing registry credential cannot
+      # leave a newly published package ahead of its registry entry.
+      - name: Check registry credential
+        if: steps.check.outputs.new == 'true' || inputs.sync_registry
         env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           MCP_REGISTRY_PRIVATE_KEY: ${{ secrets.MCP_REGISTRY_PRIVATE_KEY }}
         run: |
-          missing=0
-          [ -n "$NPM_TOKEN" ] || { echo "::error::NPM_TOKEN secret is not set"; missing=1; }
-          [ -n "$MCP_REGISTRY_PRIVATE_KEY" ] || { echo "::error::MCP_REGISTRY_PRIVATE_KEY secret is not set"; missing=1; }
-          exit "$missing"
+          if [[ ! "$MCP_REGISTRY_PRIVATE_KEY" =~ ^[0-9a-fA-F]{64}$ ]]; then
+            echo "::error::MCP_REGISTRY_PRIVATE_KEY must be a 32-byte hex signing key"
+            exit 1
+          fi
 
       - if: steps.check.outputs.new == 'true'
         run: npm ci
@@ -84,7 +88,7 @@ jobs:
       # through DNS or HTTP proof of usestring.ai; GitHub OIDC covers io.github.*
       # names only. The key pairs with the v=MCPv1 TXT record on usestring.ai.
       - name: Publish the registry entry
-        if: steps.check.outputs.new == 'true'
+        if: steps.check.outputs.new == 'true' || inputs.sync_registry
         env:
           MCP_REGISTRY_PRIVATE_KEY: ${{ secrets.MCP_REGISTRY_PRIVATE_KEY }}
         run: |
