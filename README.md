@@ -226,3 +226,8 @@ the changes. The release job checks npm directly, so a registry publication fail
 does not hide a version that users can already install. A manual workflow run can
 record a missing GitHub release for the current published version without
 republishing the package or changing its version.
+
+For a historical version whose source predates workflow changes, a maintainer may
+need to create its source tag first: GitHub limits the workflow token's ability
+to target older workflow history. The release job verifies that an existing tag
+matches the published package's source before using it.

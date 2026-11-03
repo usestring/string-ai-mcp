@@ -100,5 +100,13 @@ jobs:
             echo "The published package has no valid source commit" >&2
             exit 1
           fi
+          target_args=(--target "$published_commit")
+          if tagged_commit="$(gh api "repos/$GITHUB_REPOSITORY/commits/$tag" --jq .sha 2>/dev/null)"; then
+            if [[ "$tagged_commit" != "$published_commit" ]]; then
+              echo "The version tag does not match the published package source" >&2
+              exit 1
+            fi
+            target_args=(--verify-tag)
+          fi
           gh release create "$tag" --repo "$GITHUB_REPOSITORY" \
-            --target "$published_commit" --title "$PACKAGE_NAME $tag" --generate-notes
+            "${target_args[@]}" --title "$PACKAGE_NAME $tag" --generate-notes
