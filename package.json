@@ -1,11 +1,11 @@
 {
   "name": "@usestring/mcp",
   "mcpName": "ai.usestring/web-access",
-  "version": "1.3.5",
+  "version": "1.3.8",
   "publishConfig": {
     "access": "public"
   },
-  "description": "Official String Web Access MCP server — search the web, fetch or send requests to any URL, and map a site's URLs as clean, LLM-ready Markdown, with proxy rotation, session handling and JS rendering server-side.",
+  "description": "Official String Web Access MCP server — search the web, fetch or send requests to any URL, and map a site's URLs as clean, LLM-ready Markdown.",
   "type": "module",
   "bin": {
     "string-ai-mcp": "build/index.js"
@@ -33,21 +33,19 @@
     "mcp-server",
     "web-search",
     "markdown",
-    "proxy",
     "crawler",
     "data-extraction",
     "llm",
     "ai-agents",
     "claude",
-    "cursor",
-    "unblocker"
+    "cursor"
   ],
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/usestring/string-ai-mcp.git"
   },
-  "homepage": "https://github.com/usestring/string-ai-mcp#readme",
+  "homepage": "https://usestring.ai",
   "bugs": {
     "url": "https://github.com/usestring/string-ai-mcp/issues"
   },
