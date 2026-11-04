@@ -20,10 +20,12 @@ const { version: PACKAGE_VERSION } = createRequire(import.meta.url)("../package.
 };
 
 const API_BASE_URL = "https://request.usestring.ai/v1";
-const API_KEY = process.env.STRING_AI_API_KEY ?? "";
+// STRING_API_KEY is the name the String CLI and docs use; STRING_AI_API_KEY is
+// what earlier releases read, so existing configurations keep working.
+const API_KEY = process.env.STRING_API_KEY || process.env.STRING_AI_API_KEY || "";
 
 if (!API_KEY) {
-	console.error("Error: STRING_AI_API_KEY environment variable is required.");
+	console.error("Error: set STRING_API_KEY to a String API key from https://portal.usestring.ai/settings.");
 	process.exit(1);
 }
 interface ApiErrorBody {
