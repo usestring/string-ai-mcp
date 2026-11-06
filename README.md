@@ -5,6 +5,55 @@ The official [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) se
 request, and map a site's URLs — all returned as clean, LLM-ready Markdown. Connect any
 MCP-compatible client — VS Code, Cursor, Windsurf, Claude Desktop, and more.
 
+## Benchmark: success rate on 100 bot-protected sites
+
+String runs the open [Web Data Frontier Benchmark](https://usestring.ai/benchmark): 17 web
+scraping APIs, the same 100 bot-protected target sites across 16 industries, 5 attempts per page,
+8,500 live requests. A request only passes if the body contains a marker that appears on the real
+page, so a CAPTCHA page or an empty JavaScript shell returned with HTTP 200 counts as a failure.
+The harness, target list and raw results are open source:
+[usestring/web-data-frontier-benchmark](https://github.com/usestring/web-data-frontier-benchmark).
+
+Run completed October 30, 2026 (selected rows; full leaderboard on the
+[benchmark page](https://usestring.ai/benchmark)):
+
+| Rank | Provider    | Success rate | Latency score |
+| ---- | ----------- | ------------ | ------------- |
+| 1    | String      | 98.6%        | 4.24s         |
+| 2    | Scrape.do   | 94.0%        | 5.08s         |
+| 3    | Context.dev | 93.0%        | 10.96s        |
+| 4    | Scrapfly    | 86.8%        | 19.62s        |
+| 5    | ScrapingBee | 85.2%        | 20.30s        |
+| 6    | Firecrawl   | 81.2%        | 8.87s         |
+| 7    | Zyte        | 79.6%        | 14.43s        |
+| 8    | Apify       | 79.4%        | 24.87s        |
+| 9    | ScraperAPI  | 76.4%        | 15.19s        |
+| 10   | Bright Data | 75.4%        | 27.88s        |
+
+The latency score is failure-aware: per target it is the p75 of a provider's successful attempts,
+and a provider that fails a target is charged the p75 of the providers that succeeded, so a
+provider cannot look fast by failing quickly. Results are a dated snapshot and move between
+monthly reruns. String routes requests on its own servers, while some providers were tested with
+their strongest tier pinned, so the comparison is not parameter-for-parameter; the
+[repository README](https://github.com/usestring/web-data-frontier-benchmark) explains the
+method, and you can rerun it with your own keys.
+
+## Pricing
+
+You pay only for successful requests. Every account starts with $5 of free credit (about 20,000
+standard fetches), no card required, and it never expires. Each paid plan's monthly fee is
+included as usage credit, and unused credit rolls over.
+
+| Plan    | Monthly | Fetch, standard (per 1K) | Fetch, premium (per 1K) | Search (per 1K) |
+| ------- | ------- | ------------------------ | ----------------------- | --------------- |
+| Free    | $0      | $0.25                    | $2.40                   | $1.20           |
+| Starter | $19     | $0.25                    | $2.40                   | $1.20           |
+| Growth  | $99     | $0.16                    | $0.90                   | $0.70           |
+| Scale   | $499    | $0.13                    | $0.55                   | $0.50           |
+| Volume  | $999    | $0.11                    | $0.45                   | $0.45           |
+
+Current prices, including browser rates, are on the [pricing page](https://usestring.ai/pricing).
+
 ## Tools
 
 | Tool                  | Description                                                                     |
