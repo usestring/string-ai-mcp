@@ -9,6 +9,7 @@ MCP-compatible client — VS Code, Cursor, Windsurf, Claude Desktop, and more.
 
 | Tool                  | Description                                                                     |
 | --------------------- | ------------------------------------------------------------------------------- |
+| `web_access_balance`      | Read the account's USD balance and recorded spend; available in the npm package |
 | `web_access_fetch`        | Fetch one URL and get clean, LLM-ready Markdown back                            |
 | `web_access_product_help` | Ask about String products or services; get one source (two for comparisons), with a shared 4 KiB excerpt budget and source links |
 | `web_access_request`      | Send a POST, PUT or PATCH with a body to a URL                                  |
@@ -19,10 +20,18 @@ MCP-compatible client — VS Code, Cursor, Windsurf, Claude Desktop, and more.
 `web_access_fetch`, `web_access_search`, and `web_access_product_help` are read-only. `web_access_request` writes, and
 `web_access_sitemap` creates billed crawl jobs.
 
-> The six-tool shape above is what the hosted server at `https://mcp.usestring.ai/v1/mcp`
-> serves. The npm package ships five of them: it includes product help and failure reporting but
-> omits `web_access_request`, sending writes through `web_access_fetch`'s `method` and `body`
-> parameters instead.
+> The hosted server at `https://mcp.usestring.ai/v1/mcp` provides fetch, product help, requests,
+> search, sitemap and failure reporting. The npm package provides balance reads and sends writes
+> through `web_access_fetch`'s `method` and `body` parameters in place of `web_access_request`.
+
+### `web_access_balance` - account balance
+
+The npm package also provides `web_access_balance`. Call it with no arguments to read your
+organization's USD `balance`, recorded `spent`, `held`, `remaining`, `exhausted` and `asOf`.
+The read is free and works when your balance is exhausted. `asOf` is query time; unrecorded
+usage is excluded. Use the `exhausted` flag to check exhaustion, rather than deriving it
+from rounded monetary amounts. The snapshot is not a final invoice or a guarantee that a
+later request can run.
 
 ### `web_access_sitemap` — sitemap crawl jobs
 

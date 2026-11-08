@@ -538,6 +538,39 @@ const server = new McpServer({
 		"String AI Web Access MCP Server - tools for web fetching (web_access_fetch), search (web_access_search), whole-site URL crawling (web_access_sitemap), and credit-free failure reporting (web_access_report).",
 });
 
+const accountBalanceSchema = z.object({
+	currency: z.literal("USD"),
+	balance: z.number().finite(),
+	spent: z.number().finite(),
+	held: z.number().finite(),
+	remaining: z.number().finite().nonnegative(),
+	exhausted: z.boolean(),
+	asOf: z.string().datetime(),
+});
+
+server.registerTool(
+	"web_access_balance",
+	{
+		title: "Check account balance",
+		description: "Read your String account's USD balance, recorded spend, held credit and remaining credit. Free to call, including when credit is exhausted. asOf is query time; queued or unrecorded usage is excluded, so this is not a final invoice or a guarantee that a subsequent request will succeed.",
+		annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true },
+		inputSchema: z.object({}).strict(),
+		outputSchema: accountBalanceSchema,
+	},
+	async () => {
+		try {
+			const data = accountBalanceSchema.parse(await apiRequestJson<unknown>("/account/balance", { method: "GET" }));
+			return {
+				content: [{ type: "text" as const, text: `Remaining credit: ${data.remaining} ${data.currency} (recorded usage as of ${data.asOf})` }],
+				structuredContent: data,
+			};
+		} catch (err) {
+			const message = err instanceof Error ? err.message : String(err);
+			return { isError: true, content: [{ type: "text" as const, text: `Balance failed: ${message}` }] };
+		}
+	},
+);
+
 server.registerTool(
 	"web_access_product_help",
 	{
