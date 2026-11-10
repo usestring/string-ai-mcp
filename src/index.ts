@@ -552,7 +552,7 @@ server.registerTool(
 	"web_access_balance",
 	{
 		title: "Check account balance",
-		description: "Read your String account's USD balance, recorded spend, held credit and remaining credit. Free to call, including when credit is exhausted. asOf is query time; queued or unrecorded usage is excluded, so this is not a final invoice or a guarantee that a subsequent request will succeed.",
+		description: "Read your String account's USD balance, recorded spend, held credit and remaining credit. Free to call, including when credit is exhausted. asOf is query time.",
 		annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true },
 		inputSchema: z.object({}).strict(),
 		outputSchema: accountBalanceSchema,
