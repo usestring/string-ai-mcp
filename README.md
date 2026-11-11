@@ -33,6 +33,11 @@ usage is excluded. Use the `exhausted` flag to check exhaustion, rather than der
 from rounded monetary amounts. The snapshot is not a final invoice or a guarantee that a
 later request can run.
 
+Balance checks count toward your organization's API rate limit alongside other requests.
+If you exceed the limit, the API returns `429 Too Many Requests`. See
+[rate limits](https://usestring.ai/docs/api-reference/rate-limits) for plan limits and
+retry guidance.
+
 ### `web_access_sitemap` — sitemap crawl jobs
 
 A crawl is a two-phase, asynchronous **quote → approve → poll → read** job:
