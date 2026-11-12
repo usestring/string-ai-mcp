@@ -16,7 +16,9 @@ MCP-compatible client — VS Code, Cursor, Windsurf, Claude Desktop, and more.
 | `web_access_sitemap`      | Crawl a site and map its URLs as an asynchronous job, driven by `action`        |
 | `web_access_report`       | Send one redacted, credit-free failure diagnostic to String support             |
 
-`web_access_fetch`, `web_access_search`, and `web_access_product_help` are read-only. `web_access_request` writes, and
+`web_access_search` and `web_access_product_help` are read-only. The npm package's fetch can send
+writes through `method` and `body`; hosted `/v1/mcp` and `/v2/mcp` fetch also accept browser actions
+that can modify destination data. `web_access_request` sends writes, and
 `web_access_sitemap` creates billed crawl jobs.
 
 > The six-tool shape above is what the hosted server at `https://mcp.usestring.ai/v1/mcp`
