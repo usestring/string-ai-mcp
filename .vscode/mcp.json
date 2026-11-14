@@ -8,7 +8,7 @@
 		}
 	],
 	"servers": {
-		"string-ai-web-access": {
+		"string": {
 			"command": "npx",
 			"args": ["-y", "@usestring/mcp"],
 			"env": {
