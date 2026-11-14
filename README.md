@@ -12,7 +12,7 @@ install, and you can start without an account or an API key.
 
 | URL | Access | What it serves |
 | --- | --- | --- |
-| `https://mcp.usestring.ai` | No account or API key | Fetch and search, within a free daily allowance |
+| `https://mcp.usestring.ai` | No account or API key | Fetch and search within a free daily allowance, plus String product help |
 | `https://mcp.usestring.ai?login` | Sign in with your String account | Every hosted tool: search, fetch, sending requests to a URL, site crawls, your account balance and String product help |
 | `https://mcp.usestring.ai/integration` | Sign in, or an API key | Every hosted tool plus site integrations |
 
@@ -24,8 +24,8 @@ clients, connect to `https://mcp.usestring.ai` and send an API key as
 ### Claude Code
 
 ```bash
-claude mcp add --transport http --scope user string-web-access "https://mcp.usestring.ai?login"
-claude mcp login string-web-access
+claude mcp add --transport http --scope user string "https://mcp.usestring.ai?login"
+claude mcp login string
 ```
 
 The second command opens String's sign-in page in your browser. To try the server without an
@@ -38,7 +38,7 @@ Add to `~/.cursor/mcp.json`:
 ```json
 {
   "mcpServers": {
-    "string-web-access": {
+    "string": {
       "url": "https://mcp.usestring.ai",
       "headers": { "Authorization": "Bearer YOUR_API_KEY" }
     }
@@ -61,7 +61,7 @@ Add to `.vscode/mcp.json`:
     }
   ],
   "servers": {
-    "string-web-access": {
+    "string": {
       "type": "http",
       "url": "https://mcp.usestring.ai",
       "headers": { "Authorization": "Bearer ${input:stringApiKey}" }
@@ -70,8 +70,8 @@ Add to `.vscode/mcp.json`:
 }
 ```
 
-In Cursor or VS Code, leave out `headers` (and the VS Code `inputs`) to use the free fetch and
-search with no key.
+In Cursor or VS Code, leave out `headers` (and the VS Code `inputs`) to use the free tools with no
+key.
 
 Setup for Claude, ChatGPT, Codex, Grok, OpenCode and other clients is in the
 [hosted MCP docs](https://portal.usestring.ai/docs/mcp/remote). To run the server on your own
@@ -81,26 +81,39 @@ machine instead, see [Run it locally](#run-it-locally).
 
 | Tool                  | Description                                                                     |
 | --------------------- | ------------------------------------------------------------------------------- |
+| `web_access_balance`      | Read your account's USD balance, recorded spend, held credit and remaining credit; free to call |
 | `web_access_fetch`        | Fetch one URL and get clean, LLM-ready Markdown back                            |
+| `web_access_integrations` | List maintained integrations for specific sites, and describe a site's actions with their input and output schemas |
+| `web_access_integration_run` | Run one action of a site integration and get typed rows back, billed to your String account |
 | `web_access_product_help` | Ask about String products or services; get one source (two for comparisons), with a shared 4 KiB excerpt budget and source links |
 | `web_access_request`      | Send a POST, PUT or PATCH with a body to a URL                                  |
 | `web_access_search`       | Search the web: ranked results plus the knowledge panel, AI overview, local pack and other surfaces Google rendered; optional `searchCount` (1–300) pages Google; `searchType` searches Google's images, videos, shopping, books, places or forums tab; `safeSearch`, `includeOmittedResults`, `autocorrect`, `restrictCountry` and `verbatim` filter it; `page`, `dateRange` and `sortBy` refine a Google search; `format` is `"structured"` (JSON, the default and recommended) or `"raw"` (the Google results page as HTML, one page per call; `page` only, `searchCount` is rejected with raw) |
+| `web_access_sitemap_quote` | Quote a crawl of one site: estimated pages and cost. Nothing is crawled or billed until the crawl starts |
+| `web_access_sitemap_start` | Start a quoted crawl after the user approves the quote; pages are billed as they are fetched |
+| `web_access_sitemap_status` | Check a crawl's progress, and read the URLs it found once it finishes |
 | `web_access_sitemap`      | Crawl a site and map its URLs as an asynchronous job, driven by `action`        |
 | `web_access_report`       | Send one redacted, credit-free failure diagnostic to String support             |
 
-`web_access_search` and `web_access_product_help` are read-only. The npm package's fetch can send
-writes through `method` and `body`; hosted `/v1/mcp` and `/v2/mcp` fetch also accept browser actions
-that can modify destination data. `web_access_request` sends writes, and
-`web_access_sitemap` creates billed crawl jobs.
+The tools you get depend on where you connect:
 
-> The npm package ships five of these: it includes product help and failure reporting but omits
-> `web_access_request`, sending writes through `web_access_fetch`'s `method` and `body` parameters
-> instead. Signed in or with an API key, the hosted server at `https://mcp.usestring.ai` lists
-> `web_access_request`, splits the crawl job into `web_access_sitemap_quote`,
-> `web_access_sitemap_start` and `web_access_sitemap_status`, and adds `web_access_balance`. It
-> does not list `web_access_report`.
+| Server | Tools |
+| --- | --- |
+| `https://mcp.usestring.ai` with no key | `web_access_fetch`, `web_access_search` and `web_access_product_help` |
+| `https://mcp.usestring.ai?login`, or `https://mcp.usestring.ai` with an API key | Those three, plus `web_access_request`, `web_access_sitemap_quote`, `web_access_sitemap_start`, `web_access_sitemap_status` and `web_access_balance` |
+| `https://mcp.usestring.ai/integration` | All of the above, plus `web_access_integrations` and `web_access_integration_run` |
+| The npm package, run locally | `web_access_fetch`, `web_access_search`, `web_access_product_help`, `web_access_sitemap` and `web_access_report` |
+
+`web_access_search`, `web_access_product_help`, `web_access_balance`, `web_access_sitemap_status`
+and `web_access_integrations` are read-only. The npm package's fetch can send writes through
+`method` and `body`; hosted `/v1/mcp` and `/v2/mcp` fetch also accept browser actions that can
+modify destination data. `web_access_request` sends writes. `web_access_sitemap_start` and the npm
+package's `web_access_sitemap` start billed crawl jobs, and `web_access_integration_run` is billed
+to your account.
 
 ### `web_access_sitemap` — sitemap crawl jobs
+
+The npm package runs a crawl through this one tool. The hosted server splits the same steps into
+`web_access_sitemap_quote`, `web_access_sitemap_start` and `web_access_sitemap_status`.
 
 A crawl is a two-phase, asynchronous **quote → approve → poll → read** job:
 nothing is crawled or billed until the quote is explicitly approved.
@@ -177,7 +190,7 @@ Press `Ctrl+Shift+P` → **Preferences: Open User Settings (JSON)** and add:
 		}
 	],
 	"servers": {
-		"string-ai": {
+		"string": {
 			"command": "npx",
 			"args": ["-y", "@usestring/mcp"],
 			"env": {
@@ -197,7 +210,7 @@ Open **Settings → Features → MCP Servers → + Add new global MCP server** a
 ```json
 {
   "mcpServers": {
-    "string-ai": {
+    "string": {
       "command": "npx",
       "args": ["-y", "@usestring/mcp"],
       "env": {
@@ -215,7 +228,7 @@ Add to `~/.codeium/windsurf/model_config.json`:
 ```json
 {
   "mcpServers": {
-    "string-ai": {
+    "string": {
       "command": "npx",
       "args": ["-y", "@usestring/mcp"],
       "env": {
@@ -233,7 +246,7 @@ Add to your `claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
-    "string-ai": {
+    "string": {
       "command": "npx",
       "args": ["-y", "@usestring/mcp"],
       "env": {
