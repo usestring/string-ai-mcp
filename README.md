@@ -5,6 +5,78 @@ The official [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) se
 request, and map a site's URLs — all returned as clean, LLM-ready Markdown. Connect any
 MCP-compatible client — VS Code, Cursor, Windsurf, Claude Desktop, and more.
 
+## Connect to the hosted server
+
+The hosted server runs at `https://mcp.usestring.ai` over Streamable HTTP. There is nothing to
+install, and you can start without an account or an API key.
+
+| URL | Access | What it serves |
+| --- | --- | --- |
+| `https://mcp.usestring.ai` | No account or API key | Fetch and search, within a free daily allowance |
+| `https://mcp.usestring.ai?login` | Sign in with your String account | Every hosted tool: search, fetch, sending requests to a URL, site crawls, your account balance and String product help |
+| `https://mcp.usestring.ai/integration` | Sign in, or an API key | Every hosted tool plus site integrations |
+
+Claude, Claude Code, ChatGPT, Codex, Grok and OpenCode v2 can sign in with String. In other
+clients, connect to `https://mcp.usestring.ai` and send an API key as
+`Authorization: Bearer YOUR_API_KEY`. You can create a key in
+[String settings](https://portal.usestring.ai/settings).
+
+### Claude Code
+
+```bash
+claude mcp add --transport http --scope user string-web-access "https://mcp.usestring.ai?login"
+claude mcp login string-web-access
+```
+
+The second command opens String's sign-in page in your browser. To try the server without an
+account, add `https://mcp.usestring.ai` and skip the second command.
+
+### Cursor
+
+Add to `~/.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "string-web-access": {
+      "url": "https://mcp.usestring.ai",
+      "headers": { "Authorization": "Bearer YOUR_API_KEY" }
+    }
+  }
+}
+```
+
+### VS Code
+
+Add to `.vscode/mcp.json`:
+
+```json
+{
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "stringApiKey",
+      "description": "String API key",
+      "password": true
+    }
+  ],
+  "servers": {
+    "string-web-access": {
+      "type": "http",
+      "url": "https://mcp.usestring.ai",
+      "headers": { "Authorization": "Bearer ${input:stringApiKey}" }
+    }
+  }
+}
+```
+
+In Cursor or VS Code, leave out `headers` (and the VS Code `inputs`) to use the free fetch and
+search with no key.
+
+Setup for Claude, ChatGPT, Codex, Grok, OpenCode and other clients is in the
+[hosted MCP docs](https://portal.usestring.ai/docs/mcp/remote). To run the server on your own
+machine instead, see [Run it locally](#run-it-locally).
+
 ## Tools
 
 | Tool                  | Description                                                                     |
@@ -21,10 +93,12 @@ writes through `method` and `body`; hosted `/v1/mcp` and `/v2/mcp` fetch also ac
 that can modify destination data. `web_access_request` sends writes, and
 `web_access_sitemap` creates billed crawl jobs.
 
-> The six-tool shape above is what the hosted server at `https://mcp.usestring.ai/v1/mcp`
-> serves. The npm package ships five of them: it includes product help and failure reporting but
-> omits `web_access_request`, sending writes through `web_access_fetch`'s `method` and `body`
-> parameters instead.
+> The npm package ships five of these: it includes product help and failure reporting but omits
+> `web_access_request`, sending writes through `web_access_fetch`'s `method` and `body` parameters
+> instead. Signed in or with an API key, the hosted server at `https://mcp.usestring.ai` lists
+> `web_access_request`, splits the crawl job into `web_access_sitemap_quote`,
+> `web_access_sitemap_start` and `web_access_sitemap_status`, and adds `web_access_balance`. It
+> does not list `web_access_report`.
 
 ### `web_access_sitemap` — sitemap crawl jobs
 
@@ -53,7 +127,9 @@ report a `web_access_report` failure or repeat a failed call only to gather repo
 Reports use the configured API key for authentication but do not consume Web Access credits.
 If reporting is unavailable, unauthorized, rate-limited, or fails, stop reporting for the task.
 
-## Quick Start
+## Run it locally
+
+The npm package runs the server on your own machine over stdio. It needs a String API key.
 
 ### Run with npx
 
