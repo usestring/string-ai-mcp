@@ -82,6 +82,25 @@ jobs:
           npm install -g npm@11
           npm publish --access public
 
+      # npm accepts a publish before it serves it, and took about three minutes
+      # to serve 1.4.0. The registry refuses an entry whose npm version it cannot
+      # fetch, and the release job reads the same version, so hold both until npm
+      # answers.
+      - name: Wait for npm to serve the new version
+        if: steps.check.outputs.new == 'true'
+        env:
+          PACKAGE: ${{ steps.check.outputs.name }}@${{ steps.check.outputs.version }}
+        run: |
+          for _ in $(seq 1 90); do
+            if npm view "$PACKAGE" version --prefer-online >/dev/null 2>&1; then
+              echo "$PACKAGE is on npm"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::$PACKAGE was published, but npm is still not serving it after 15 minutes"
+          exit 1
+
       # Second, because the registry entry points at the npm release: publishing
       # it first would advertise a version nobody can install yet.
       # ai.usestring/* is a domain namespace, which the registry only grants
