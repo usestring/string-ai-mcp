@@ -91,7 +91,7 @@ machine instead, see [Run it locally](#run-it-locally).
 | `web_access_sitemap_quote` | Quote a crawl of one site: estimated pages and cost. Nothing is crawled or billed until the crawl starts |
 | `web_access_sitemap_start` | Start a quoted crawl after the user approves the quote; pages are billed as they are fetched |
 | `web_access_sitemap_status` | Check a crawl's progress, and read the URLs it found once it finishes |
-| `web_access_sitemap`      | Crawl a site and map its URLs as an asynchronous job, driven by `action`        |
+| `web_access_sitemap`      | Deprecated: the same crawl lifecycle in one tool, driven by `action`            |
 | `web_access_report`       | Send one redacted, credit-free failure diagnostic to String support             |
 
 The tools you get depend on where you connect:
@@ -101,7 +101,7 @@ The tools you get depend on where you connect:
 | `https://mcp.usestring.ai` with no key | `web_access_fetch`, `web_access_search` and `web_access_product_help` |
 | `https://mcp.usestring.ai?login`, or `https://mcp.usestring.ai` with an API key | Those three, plus `web_access_request`, `web_access_sitemap_quote`, `web_access_sitemap_start`, `web_access_sitemap_status` and `web_access_balance` |
 | `https://mcp.usestring.ai/integration` | All of the above, plus `web_access_integrations` and `web_access_integration_run` |
-| The npm package, run locally | `web_access_fetch`, `web_access_search`, `web_access_product_help`, `web_access_balance`, `web_access_sitemap` and `web_access_report` |
+| The npm package, run locally | `web_access_fetch`, `web_access_search`, `web_access_product_help`, `web_access_balance`, `web_access_sitemap_quote`, `web_access_sitemap_start`, `web_access_sitemap_status`, the deprecated `web_access_sitemap` and `web_access_report` |
 
 `web_access_search`, `web_access_product_help`, `web_access_balance`, `web_access_sitemap_status`
 and `web_access_integrations` are read-only. The npm package's fetch can send writes through
@@ -124,12 +124,20 @@ If you exceed the limit, the API returns `429 Too Many Requests`. See
 [rate limits](https://portal.usestring.ai/docs/api-reference/rate-limits) for plan limits and
 retry guidance.
 
-### `web_access_sitemap` — sitemap crawl jobs
+### `web_access_sitemap_quote`, `web_access_sitemap_start`, `web_access_sitemap_status`
 
-The npm package runs a crawl through this one tool. The hosted server splits the same steps into
-`web_access_sitemap_quote`, `web_access_sitemap_start` and `web_access_sitemap_status`.
+A crawl is a **quote → start → poll** job: nothing is crawled or billed until the user approves
+the quote and `web_access_sitemap_start` runs.
 
-A crawl is a two-phase, asynchronous **quote → approve → poll → read** job:
+| Tool | What it does |
+| --- | --- |
+| `web_access_sitemap_quote` | `url` required; `maxPages` ≤ 10000 default 10, `maxDepth` ≤ 100 default 2, `pathPrefix`, `budgetUsd`, `useSitemap` optional. Returns `jobId` + `estimatedCostUsd` + `estimatedPages`, status `awaiting_approval`. |
+| `web_access_sitemap_start` | Billing consent: starts the quoted crawl. 402 = insufficient funds; 409 `partial_state` = call it again. |
+| `web_access_sitemap_status` | Poll progress: `awaiting_approval` → `running` (`pending`/`processed`) → `completed` \| `failed` \| `canceled` \| `token_cap_exceeded`. Once terminal it also returns `total` and one page of `urls` (`limit` ≤ 5000 default 1000, `offset`). |
+
+### `web_access_sitemap` — sitemap crawl jobs (deprecated)
+
+Use the three tools above instead; this one keeps working for existing callers. A crawl is a two-phase, asynchronous **quote → approve → poll → read** job:
 nothing is crawled or billed until the quote is explicitly approved.
 
 | `action`  | What it does                                                                                       |
@@ -293,7 +301,7 @@ tool from the UI.
 
 1. The IDE spawns this server as a child process and communicates over **stdio**.
 2. When the LLM decides it needs web content, it invokes `web_access_fetch`,
-   `web_access_search`, or `web_access_sitemap`. Every failed call is reported exactly once with
+   `web_access_search`, or the `web_access_sitemap_*` tools. Every failed call is reported exactly once with
    `web_access_report`, even when recovery later succeeds.
 3. This server forwards the request to String AI's Web Access API (using your API key from
    the environment) and returns the result to the LLM.
