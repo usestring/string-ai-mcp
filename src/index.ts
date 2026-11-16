@@ -165,7 +165,7 @@ interface SearchPlace {
  * Every field beside results and zeroResults is a surface Google rendered around the ranked
  * documents (knowledge panel, AI overviews, local pack, People also ask, ...). Each is present
  * only when the page carried it and is never merged into results; only Google returns them.
- * The full shape is documented at https://docs.usestring.ai/docs/api-reference/search#response.
+ * The full shape is documented at https://docs.usestring.ai/api-reference/search#response.
  */
 interface SearchResponse {
 	results: SearchResult[];
@@ -235,6 +235,7 @@ const PRODUCT_HELP_EXCERPT_BUDGET = 4 * 1024;
 const PRODUCT_HELP_CANDIDATE_COUNT = 8;
 const PRODUCT_HELP_SOURCE_LIMIT = 24 * 1024;
 const PRODUCT_HELP_CATALOG_LIMIT = 512 * 1024;
+const PRODUCT_HELP_DOCS_HOST = "docs.usestring.ai";
 const PRODUCT_HELP_CANONICAL_PATHS = ["/products", "/web-access", "/composer", "/managed-services", "/finance", "/pricing"];
 const PRODUCT_HELP_HTML_ONLY_PATHS = new Set(["/trust", "/security", "/subprocessors"]);
 
@@ -362,6 +363,17 @@ function productHelpTerms(question: string): string[] {
 	return [...terms];
 }
 
+/**
+ * The path a catalog page ranks by. A page on the docs host ranks by the path it had under the
+ * portal's /docs, so the MCP setup pages keep their intent score and a docs section such as
+ * /composer never passes for the marketing page of the same name, whichever host the catalog lists.
+ */
+function productHelpRankPath(documentUrl: string): string {
+	const url = new URL(documentUrl);
+	const path = url.pathname.replace(/\/$/, "");
+	return url.hostname === PRODUCT_HELP_DOCS_HOST ? `/docs${path}` : path;
+}
+
 function rankProductHelpDocuments(question: string, documents: ProductHelpDocument[]): ProductHelpDocument[] {
 	const terms = productHelpTerms(question);
 	const canonicalPaths = new Set(PRODUCT_HELP_CANONICAL_PATHS);
@@ -369,7 +381,7 @@ function rankProductHelpDocuments(question: string, documents: ProductHelpDocume
 		.map((document, index) => {
 			const title = document.title.toLowerCase();
 			const description = document.description.toLowerCase();
-			const path = new URL(document.url).pathname.replace(/\/$/, "").toLowerCase();
+			const path = productHelpRankPath(document.url).toLowerCase();
 			let score = 0;
 			for (const term of terms) {
 				if (title.includes(term)) score += 6;
@@ -393,7 +405,7 @@ function rankProductHelpDocuments(question: string, documents: ProductHelpDocume
 	const selected = ranked.filter(({ score }) => score > 0).map(({ document }) => document);
 	for (const path of PRODUCT_HELP_CANONICAL_PATHS) {
 		const fallback = documents.find(
-			(document) => new URL(document.url).pathname.replace(/\/$/, "") === path && !selected.includes(document),
+			(document) => productHelpRankPath(document.url) === path && !selected.includes(document),
 		);
 		if (fallback) selected.push(fallback);
 	}
