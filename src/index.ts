@@ -20,11 +20,19 @@ const { version: PACKAGE_VERSION } = createRequire(import.meta.url)("../package.
 };
 
 const API_BASE_URL = "https://request.usestring.ai/v1";
-const API_KEY = process.env.STRING_AI_API_KEY ?? "";
+// STRING_API_KEY is the name the String CLI and docs use. STRING_AI_API_KEY, the
+// name releases before 1.4.1 read, wins when both are set: it can only have been
+// set for this server, while STRING_API_KEY is often exported in the shell for the
+// CLI and reaches the server through the client's environment.
+const LEGACY_API_KEY = process.env.STRING_AI_API_KEY || "";
+const API_KEY = LEGACY_API_KEY || process.env.STRING_API_KEY || "";
 
 if (!API_KEY) {
-	console.error("Error: STRING_AI_API_KEY environment variable is required.");
+	console.error("Error: set STRING_API_KEY to a String API key from https://portal.usestring.ai/settings.");
 	process.exit(1);
+}
+if (LEGACY_API_KEY && process.env.STRING_API_KEY && process.env.STRING_API_KEY !== LEGACY_API_KEY) {
+	console.error("Using the key in STRING_AI_API_KEY; STRING_API_KEY is also set, to a different key, and is ignored.");
 }
 interface ApiErrorBody {
 	error?: string;
@@ -165,7 +173,7 @@ interface SearchPlace {
  * Every field beside results and zeroResults is a surface Google rendered around the ranked
  * documents (knowledge panel, AI overviews, local pack, People also ask, ...). Each is present
  * only when the page carried it and is never merged into results; only Google returns them.
- * The full shape is documented at https://docs.usestring.ai/docs/api-reference/search#response.
+ * The full shape is documented at https://docs.usestring.ai/api-reference/search#response.
  */
 interface SearchResponse {
 	results: SearchResult[];
@@ -235,6 +243,7 @@ const PRODUCT_HELP_EXCERPT_BUDGET = 4 * 1024;
 const PRODUCT_HELP_CANDIDATE_COUNT = 8;
 const PRODUCT_HELP_SOURCE_LIMIT = 24 * 1024;
 const PRODUCT_HELP_CATALOG_LIMIT = 512 * 1024;
+const PRODUCT_HELP_DOCS_HOST = "docs.usestring.ai";
 const PRODUCT_HELP_CANONICAL_PATHS = ["/products", "/web-access", "/composer", "/managed-services", "/finance", "/pricing"];
 const PRODUCT_HELP_HTML_ONLY_PATHS = new Set(["/trust", "/security", "/subprocessors"]);
 
@@ -362,6 +371,17 @@ function productHelpTerms(question: string): string[] {
 	return [...terms];
 }
 
+/**
+ * The path a catalog page ranks by. A page on the docs host ranks by the path it had under the
+ * portal's /docs, so the MCP setup pages keep their intent score and a docs section such as
+ * /composer never passes for the marketing page of the same name, whichever host the catalog lists.
+ */
+function productHelpRankPath(documentUrl: string): string {
+	const url = new URL(documentUrl);
+	const path = url.pathname.replace(/\/$/, "");
+	return url.hostname === PRODUCT_HELP_DOCS_HOST ? `/docs${path}` : path;
+}
+
 function rankProductHelpDocuments(question: string, documents: ProductHelpDocument[]): ProductHelpDocument[] {
 	const terms = productHelpTerms(question);
 	const canonicalPaths = new Set(PRODUCT_HELP_CANONICAL_PATHS);
@@ -369,7 +389,7 @@ function rankProductHelpDocuments(question: string, documents: ProductHelpDocume
 		.map((document, index) => {
 			const title = document.title.toLowerCase();
 			const description = document.description.toLowerCase();
-			const path = new URL(document.url).pathname.replace(/\/$/, "").toLowerCase();
+			const path = productHelpRankPath(document.url).toLowerCase();
 			let score = 0;
 			for (const term of terms) {
 				if (title.includes(term)) score += 6;
@@ -393,7 +413,7 @@ function rankProductHelpDocuments(question: string, documents: ProductHelpDocume
 	const selected = ranked.filter(({ score }) => score > 0).map(({ document }) => document);
 	for (const path of PRODUCT_HELP_CANONICAL_PATHS) {
 		const fallback = documents.find(
-			(document) => new URL(document.url).pathname.replace(/\/$/, "") === path && !selected.includes(document),
+			(document) => productHelpRankPath(document.url) === path && !selected.includes(document),
 		);
 		if (fallback) selected.push(fallback);
 	}

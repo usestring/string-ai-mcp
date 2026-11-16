@@ -74,7 +74,7 @@ In Cursor or VS Code, leave out `headers` (and the VS Code `inputs`) to use the 
 key.
 
 Setup for Claude, ChatGPT, Codex, Grok, OpenCode and other clients is in the
-[hosted MCP docs](https://portal.usestring.ai/docs/mcp/remote). To run the server on your own
+[hosted MCP docs](https://docs.usestring.ai/mcp/remote). To run the server on your own
 machine instead, see [Run it locally](#run-it-locally).
 
 ## Tools
@@ -155,14 +155,14 @@ The npm package runs the server on your own machine over stdio. It needs a Strin
 ### Run with npx
 
 ```bash
-env STRING_AI_API_KEY=your-key npx @usestring/mcp
+env STRING_API_KEY=your-key npx @usestring/mcp
 ```
 
 ### Install globally
 
 ```bash
 npm install -g @usestring/mcp
-STRING_AI_API_KEY=your-key string-ai-mcp
+STRING_API_KEY=your-key string-ai-mcp
 ```
 
 ### Build from source
@@ -172,14 +172,14 @@ git clone https://github.com/usestring/string-ai-mcp.git
 cd string-ai-mcp
 npm install
 npm run build
-STRING_AI_API_KEY=your-key node build/index.js
+STRING_API_KEY=your-key node build/index.js
 ```
 
 ## Environment Variables
 
 | Variable             | Required | Description                       |
 | -------------------- | -------- | --------------------------------- |
-| `STRING_AI_API_KEY`  | **Yes**  | Your String AI API key            |
+| `STRING_API_KEY`     | **Yes**  | Your String API key, from [String settings](https://portal.usestring.ai/settings). Read from 1.4.1 on. `STRING_AI_API_KEY`, the only name earlier releases read, still works, and wins when both are set. |
 
 ## Client Configuration
 
@@ -192,7 +192,7 @@ Press `Ctrl+Shift+P` → **Preferences: Open User Settings (JSON)** and add:
 	"inputs": [
 		{
 			"type": "promptString",
-			"id": "stringAiKey",
+			"id": "stringApiKey",
 			"description": "String AI API Key",
 			"password": true
 		}
@@ -202,7 +202,7 @@ Press `Ctrl+Shift+P` → **Preferences: Open User Settings (JSON)** and add:
 			"command": "npx",
 			"args": ["-y", "@usestring/mcp"],
 			"env": {
-				"STRING_AI_API_KEY": "${input:stringAiKey}"
+				"STRING_API_KEY": "${input:stringApiKey}"
 			}
 		}
 	}
@@ -222,7 +222,7 @@ Open **Settings → Features → MCP Servers → + Add new global MCP server** a
       "command": "npx",
       "args": ["-y", "@usestring/mcp"],
       "env": {
-        "STRING_AI_API_KEY": "YOUR_API_KEY"
+        "STRING_API_KEY": "YOUR_API_KEY"
       }
     }
   }
@@ -240,7 +240,7 @@ Add to `~/.codeium/windsurf/model_config.json`:
       "command": "npx",
       "args": ["-y", "@usestring/mcp"],
       "env": {
-        "STRING_AI_API_KEY": "YOUR_API_KEY"
+        "STRING_API_KEY": "YOUR_API_KEY"
       }
     }
   }
@@ -258,7 +258,7 @@ Add to your `claude_desktop_config.json`:
       "command": "npx",
       "args": ["-y", "@usestring/mcp"],
       "env": {
-        "STRING_AI_API_KEY": "YOUR_API_KEY"
+        "STRING_API_KEY": "YOUR_API_KEY"
       }
     }
   }
