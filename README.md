@@ -179,7 +179,7 @@ STRING_API_KEY=your-key node build/index.js
 
 | Variable             | Required | Description                       |
 | -------------------- | -------- | --------------------------------- |
-| `STRING_API_KEY`     | **Yes**  | Your String API key, from [String settings](https://portal.usestring.ai/settings). `STRING_AI_API_KEY`, the name earlier releases read, still works. |
+| `STRING_API_KEY`     | **Yes**  | Your String API key, from [String settings](https://portal.usestring.ai/settings). Read from 1.4.1 on. `STRING_AI_API_KEY`, the only name earlier releases read, still works, and wins when both are set. |
 
 ## Client Configuration
 
