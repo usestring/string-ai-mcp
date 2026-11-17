@@ -31,12 +31,12 @@
   "remotes": [
     {
       "type": "streamable-http",
-      "url": "https://mcp.usestring.ai/v1/mcp",
+      "url": "https://mcp.usestring.ai?login",
       "headers": [
         {
           "name": "Authorization",
-          "description": "Bearer <your String API key>",
-          "isRequired": true,
+          "description": "Bearer <your String API key>. Leave it out to sign in with your String account instead.",
+          "isRequired": false,
           "isSecret": true
         }
       ]
