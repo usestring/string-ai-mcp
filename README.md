@@ -13,7 +13,7 @@ install, and you can start without an account or an API key.
 | URL | Access | What it serves |
 | --- | --- | --- |
 | `https://mcp.usestring.ai` | No account or API key | Fetch and search within a free daily allowance, plus String product help |
-| `https://mcp.usestring.ai?login` | Sign in with your String account | Every hosted tool: search, fetch, sending requests to a URL, site crawls, your account balance and String product help |
+| `https://mcp.usestring.ai?login` | Sign in with your String account | Every hosted tool: search, fetch, browser actions on a page, sending requests to a URL, site crawls, your account balance and String product help |
 | `https://mcp.usestring.ai/integration` | Sign in, or an API key | Every hosted tool plus site integrations |
 
 Claude, Claude Code, ChatGPT, Codex, Grok and OpenCode v2 can sign in with String. In other
@@ -85,6 +85,7 @@ machine instead, see [Run it locally](#run-it-locally).
 | `web_access_fetch`        | Fetch one URL and get clean, LLM-ready Markdown back                            |
 | `web_access_integrations` | List maintained integrations for specific sites, and describe a site's actions with their input and output schemas |
 | `web_access_integration_run` | Run one action of a site integration and get typed rows back, billed to your String account |
+| `web_access_interact`     | Run browser actions on a page (click, type, scroll, wait), then read the page they leave; billed as a browser session |
 | `web_access_product_help` | Ask about String products or services; get one source (two for comparisons), with a shared 4 KiB excerpt budget and source links |
 | `web_access_request`      | Send a POST, PUT or PATCH with a body to a URL                                  |
 | `web_access_search`       | Search the web: ranked results plus the knowledge panel, AI overview, local pack and other surfaces Google rendered; optional `searchCount` (1–300) pages Google; `searchType` searches Google's images, videos, shopping, books, places or forums tab; `safeSearch`, `includeOmittedResults`, `autocorrect`, `restrictCountry` and `verbatim` filter it; `page`, `dateRange` and `sortBy` refine a Google search; `format` is `"structured"` (JSON, the default and recommended) or `"raw"` (the Google results page as HTML, one page per call; `page` only, `searchCount` is rejected with raw) |
@@ -99,14 +100,15 @@ The tools you get depend on where you connect:
 | Server | Tools |
 | --- | --- |
 | `https://mcp.usestring.ai` with no key | `web_access_fetch`, `web_access_search` and `web_access_product_help` |
-| `https://mcp.usestring.ai?login`, or `https://mcp.usestring.ai` with an API key | Those three, plus `web_access_request`, `web_access_sitemap_quote`, `web_access_sitemap_start`, `web_access_sitemap_status` and `web_access_balance` |
+| `https://mcp.usestring.ai?login`, or `https://mcp.usestring.ai` with an API key | Those three, plus `web_access_request`, `web_access_interact`, `web_access_sitemap_quote`, `web_access_sitemap_start`, `web_access_sitemap_status` and `web_access_balance` |
 | `https://mcp.usestring.ai/integration` | All of the above, plus `web_access_integrations` and `web_access_integration_run` |
 | The npm package, run locally | `web_access_fetch`, `web_access_search`, `web_access_product_help`, `web_access_sitemap_quote`, `web_access_sitemap_start`, `web_access_sitemap_status`, the deprecated `web_access_sitemap` and `web_access_report` |
 
 `web_access_search`, `web_access_product_help`, `web_access_balance`, `web_access_sitemap_status`
 and `web_access_integrations` are read-only. The npm package's fetch can send writes through
 `method` and `body`; hosted `/v1/mcp` and `/v2/mcp` fetch also accept browser actions that can
-modify destination data. `web_access_request` sends writes. `web_access_sitemap_start` and the npm
+modify destination data, as does the hosted `web_access_interact`. `web_access_request` sends
+writes. `web_access_sitemap_start` and the npm
 package's `web_access_sitemap` start billed crawl jobs, and `web_access_integration_run` is billed
 to your account.
 
