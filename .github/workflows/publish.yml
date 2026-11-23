@@ -1,0 +1,153 @@
+# Publishing is driven by the version in package.json: change it on main and this
+# ships that release to npm and to the MCP registry. Nothing else triggers a
+# publish, so the number in the repo is the number users get.
+name: Publish
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - package.json
+  workflow_dispatch:
+    inputs:
+      sync_registry:
+        description: Sync the current published version to the MCP registry
+        type: boolean
+        default: false
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    outputs:
+      package-name: ${{ steps.check.outputs.name }}
+      package-version: ${{ steps.check.outputs.version }}
+    permissions:
+      contents: read
+      id-token: write # OIDC, which is how npm authenticates this repo
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      # The path filter fires on any package.json edit, a dependency bump
+      # included, so decide here whether this version is actually new rather
+      # than letting npm fail the job over a republish.
+      - name: Is this version unpublished?
+        id: check
+        run: |
+          version="$(node -p 'require("./package.json").version')"
+          name="$(node -p 'require("./package.json").name')"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if npm view "$name@$version" version >/dev/null 2>&1; then
+            echo "$name@$version is already on npm; nothing to publish"
+            echo "new=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "new=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Check before npm publication so a missing registry credential cannot
+      # leave a newly published package ahead of its registry entry.
+      - name: Check registry credential
+        if: steps.check.outputs.new == 'true' || inputs.sync_registry
+        env:
+          MCP_REGISTRY_PRIVATE_KEY: ${{ secrets.MCP_REGISTRY_PRIVATE_KEY }}
+        run: |
+          if [[ ! "$MCP_REGISTRY_PRIVATE_KEY" =~ ^[0-9a-fA-F]{64}$ ]]; then
+            echo "::error::MCP_REGISTRY_PRIVATE_KEY must be a 32-byte hex signing key"
+            exit 1
+          fi
+
+      - if: steps.check.outputs.new == 'true'
+        run: npm ci
+      - if: steps.check.outputs.new == 'true'
+        run: npm run build
+      - if: steps.check.outputs.new == 'true'
+        run: node scripts/check-versions.mjs
+
+      # npm trusts this workflow file directly (trusted publishing), so there is
+      # no token to store or rotate; the OIDC exchange needs npm 11.5.1 or later,
+      # newer than what Node 22 bundles. It also attaches provenance on its own.
+      - name: Publish to npm
+        if: steps.check.outputs.new == 'true'
+        run: |
+          npm install -g npm@11
+          npm publish --access public
+
+      # npm accepts a publish before it serves it, and took about three minutes
+      # to serve 1.4.0. The registry refuses an entry whose npm version it cannot
+      # fetch, and the release job reads the same version, so hold both until npm
+      # answers.
+      - name: Wait for npm to serve the new version
+        if: steps.check.outputs.new == 'true'
+        env:
+          PACKAGE: ${{ steps.check.outputs.name }}@${{ steps.check.outputs.version }}
+        run: |
+          for _ in $(seq 1 90); do
+            if npm view "$PACKAGE" version --prefer-online >/dev/null 2>&1; then
+              echo "$PACKAGE is on npm"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::$PACKAGE was published, but npm is still not serving it after 15 minutes"
+          exit 1
+
+      # Second, because the registry entry points at the npm release: publishing
+      # it first would advertise a version nobody can install yet.
+      # ai.usestring/* is a domain namespace, which the registry only grants
+      # through DNS or HTTP proof of usestring.ai; GitHub OIDC covers io.github.*
+      # names only. The key pairs with the v=MCPv1 TXT record on usestring.ai.
+      - name: Publish the registry entry
+        if: steps.check.outputs.new == 'true' || inputs.sync_registry
+        env:
+          MCP_REGISTRY_PRIVATE_KEY: ${{ secrets.MCP_REGISTRY_PRIVATE_KEY }}
+        run: |
+          curl -sSL -o mcp-publisher.tar.gz \
+            "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz"
+          tar xzf mcp-publisher.tar.gz mcp-publisher
+          ./mcp-publisher login dns --domain=usestring.ai --private-key="$MCP_REGISTRY_PRIVATE_KEY"
+          ./mcp-publisher publish
+
+  github-release:
+    needs: publish
+    if: ${{ !cancelled() && needs.publish.outputs.package-name != '' && needs.publish.outputs.package-version != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Record the published package version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PACKAGE_NAME: ${{ needs.publish.outputs.package-name }}
+          PACKAGE_VERSION: ${{ needs.publish.outputs.package-version }}
+        run: |
+          tag="v$PACKAGE_VERSION"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "$tag already has a GitHub release"
+            exit 0
+          fi
+          published_commit="$(npm view "$PACKAGE_NAME@$PACKAGE_VERSION" gitHead)"
+          if [[ ! "$published_commit" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "The published package has no valid source commit" >&2
+            exit 1
+          fi
+          target_args=(--target "$published_commit")
+          if tagged_commit="$(gh api "repos/$GITHUB_REPOSITORY/commits/$tag" --jq .sha 2>/dev/null)"; then
+            if [[ "$tagged_commit" != "$published_commit" ]]; then
+              echo "The version tag does not match the published package source" >&2
+              exit 1
+            fi
+            target_args=(--verify-tag)
+          fi
+          gh release create "$tag" --repo "$GITHUB_REPOSITORY" \
+            "${target_args[@]}" --title "$PACKAGE_NAME $tag" --generate-notes

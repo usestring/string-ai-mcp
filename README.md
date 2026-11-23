@@ -2,35 +2,142 @@
 
 The official [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server for
 [String AI](https://usestring.ai)'s Web Access API. Search the web, fetch any URL or send it a
-write request, and map a site's URLs — all returned as clean, LLM-ready Markdown. Proxy rotation,
-anti-bot handling, CAPTCHA solving and JavaScript rendering happen server-side, so the agent gets
-the page instead of a block screen. Connect any MCP-compatible client — VS Code, Cursor,
-Windsurf, Claude Desktop, and more.
+request, and map a site's URLs — all returned as clean, LLM-ready Markdown. Connect any
+MCP-compatible client — VS Code, Cursor, Windsurf, Claude Desktop, and more.
+
+## Connect to the hosted server
+
+The hosted server runs at `https://mcp.usestring.ai` over Streamable HTTP. There is nothing to
+install, and you can start without an account or an API key.
+
+| URL | Access | What it serves |
+| --- | --- | --- |
+| `https://mcp.usestring.ai` | No account or API key | Fetch and search within a free daily allowance, plus String product help |
+| `https://mcp.usestring.ai?login` | Sign in with your String account | Every hosted tool: search, fetch, sending requests to a URL, site crawls, your account balance and String product help |
+| `https://mcp.usestring.ai/integration` | Sign in, or an API key | Every hosted tool plus site integrations |
+
+Claude, Claude Code, ChatGPT, Codex, Grok and OpenCode v2 can sign in with String. In other
+clients, connect to `https://mcp.usestring.ai` and send an API key as
+`Authorization: Bearer YOUR_API_KEY`. You can create a key in
+[String settings](https://portal.usestring.ai/settings).
+
+### Claude Code
+
+```bash
+claude mcp add --transport http --scope user string "https://mcp.usestring.ai?login"
+claude mcp login string
+```
+
+The second command opens String's sign-in page in your browser. To try the server without an
+account, add `https://mcp.usestring.ai` and skip the second command.
+
+### Cursor
+
+Add to `~/.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "string": {
+      "url": "https://mcp.usestring.ai",
+      "headers": { "Authorization": "Bearer YOUR_API_KEY" }
+    }
+  }
+}
+```
+
+### VS Code
+
+Add to `.vscode/mcp.json`:
+
+```json
+{
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "stringApiKey",
+      "description": "String API key",
+      "password": true
+    }
+  ],
+  "servers": {
+    "string": {
+      "type": "http",
+      "url": "https://mcp.usestring.ai",
+      "headers": { "Authorization": "Bearer ${input:stringApiKey}" }
+    }
+  }
+}
+```
+
+In Cursor or VS Code, leave out `headers` (and the VS Code `inputs`) to use the free tools with no
+key.
+
+Setup for Claude, ChatGPT, Codex, Grok, OpenCode and other clients is in the
+[hosted MCP docs](https://docs.usestring.ai/mcp/remote). To run the server on your own
+machine instead, see [Run it locally](#run-it-locally).
 
 ## Tools
 
 | Tool                  | Description                                                                     |
 | --------------------- | ------------------------------------------------------------------------------- |
+| `web_access_balance`      | Read your account's USD balance, recorded spend, held credit and remaining credit; free to call |
 | `web_access_fetch`        | Fetch one URL and get clean, LLM-ready Markdown back                            |
-| `web_access_product_help` | Ask about String products or services and get current public-site excerpts with source links |
+| `web_access_integrations` | List maintained integrations for specific sites, and describe a site's actions with their input and output schemas |
+| `web_access_integration_run` | Run one action of a site integration and get typed rows back, billed to your String account |
+| `web_access_product_help` | Ask about String products or services; get one source (two for comparisons), with a shared 4 KiB excerpt budget and source links |
 | `web_access_request`      | Send a POST, PUT or PATCH with a body to a URL                                  |
-| `web_access_search`       | Search the web: ranked results plus the knowledge panel, AI overview, local pack and other surfaces Google rendered; optional `searchCount` (1–50) pages Google |
-| `web_access_sitemap`      | Crawl a site and map its URLs as an asynchronous job, driven by `action`        |
+| `web_access_search`       | Search the web: ranked results plus the knowledge panel, AI overview, local pack and other surfaces Google rendered; optional `searchCount` (1–300) pages Google; `searchType` searches Google's images, videos, shopping, books, places or forums tab; `safeSearch`, `includeOmittedResults`, `autocorrect`, `restrictCountry` and `verbatim` filter it; `page`, `dateRange` and `sortBy` refine a Google search; `format` is `"structured"` (JSON, the default and recommended) or `"raw"` (the Google results page as HTML, one page per call; `page` only, `searchCount` is rejected with raw) |
+| `web_access_sitemap_quote` | Quote a crawl of one site: estimated pages and cost. Nothing is crawled or billed until the crawl starts |
+| `web_access_sitemap_start` | Start a quoted crawl after the user approves the quote; pages are billed as they are fetched |
+| `web_access_sitemap_status` | Check a crawl's progress, and read the URLs it found once it finishes |
+| `web_access_sitemap`      | Deprecated: the same crawl lifecycle in one tool, driven by `action`            |
 | `web_access_report`       | Send one redacted, credit-free failure diagnostic to String support             |
 
-`web_access_fetch`, `web_access_search`, and `web_access_product_help` are read-only. `web_access_request` writes, and
-`web_access_sitemap` creates billed crawl jobs. Pages that rate-limit, geo-gate or block
-automated traffic come back as Markdown rather than a block screen: proxy rotation, challenge
-handling and JavaScript rendering happen server-side.
+The tools you get depend on where you connect:
 
-> The six-tool shape above is what the hosted server at `https://mcp.usestring.ai/v1/mcp`
-> serves. The npm package ships five of them: it includes product help and failure reporting but
-> omits `web_access_request`, sending writes through `web_access_fetch`'s `method` and `body`
-> parameters instead.
+| Server | Tools |
+| --- | --- |
+| `https://mcp.usestring.ai` with no key | `web_access_fetch`, `web_access_search` and `web_access_product_help` |
+| `https://mcp.usestring.ai?login`, or `https://mcp.usestring.ai` with an API key | Those three, plus `web_access_request`, `web_access_sitemap_quote`, `web_access_sitemap_start`, `web_access_sitemap_status` and `web_access_balance` |
+| `https://mcp.usestring.ai/integration` | All of the above, plus `web_access_integrations` and `web_access_integration_run` |
+| The npm package, run locally | `web_access_fetch`, `web_access_search`, `web_access_product_help`, `web_access_balance`, `web_access_sitemap_quote`, `web_access_sitemap_start`, `web_access_sitemap_status`, the deprecated `web_access_sitemap` and `web_access_report` |
 
-### `web_access_sitemap` — sitemap crawl jobs
+`web_access_search`, `web_access_product_help`, `web_access_balance`, `web_access_sitemap_status`
+and `web_access_integrations` are read-only. The npm package's fetch can send writes through
+`method` and `body`; hosted `/v1/mcp` and `/v2/mcp` fetch also accept browser actions that can
+modify destination data. `web_access_request` sends writes. `web_access_sitemap_start` and the npm
+package's `web_access_sitemap` start billed crawl jobs, and `web_access_integration_run` is billed
+to your account.
 
-A crawl is a two-phase, asynchronous **quote → approve → poll → read** job:
+### `web_access_balance` - account balance
+
+The npm package also provides `web_access_balance`. Call it with no arguments to read your
+organization's USD `balance`, recorded `spent`, `held`, `remaining`, `exhausted` and `asOf`.
+The read is free and works when your balance is exhausted. `asOf` is query time; unrecorded
+usage is excluded. Use the `exhausted` flag to check exhaustion, rather than deriving it
+from rounded monetary amounts. The snapshot is not a final invoice or a guarantee that a
+later request can run.
+
+Balance checks count toward your organization's API rate limit alongside other requests.
+If you exceed the limit, the API returns `429 Too Many Requests`. See
+[rate limits](https://docs.usestring.ai/api-reference/rate-limits) for plan limits and
+retry guidance.
+
+### `web_access_sitemap_quote`, `web_access_sitemap_start`, `web_access_sitemap_status`
+
+A crawl is a **quote → start → poll** job: nothing is crawled or billed until the user approves
+the quote and `web_access_sitemap_start` runs.
+
+| Tool | What it does |
+| --- | --- |
+| `web_access_sitemap_quote` | `url` required; `maxPages` ≤ 10000 default 10, `maxDepth` ≤ 100 default 2, `pathPrefix`, `budgetUsd`, `useSitemap` optional. Returns `jobId` + `estimatedCostUsd` + `estimatedPages`, status `awaiting_approval`. |
+| `web_access_sitemap_start` | Billing consent: starts the quoted crawl. 402 = insufficient funds; 409 `partial_state` = call it again. |
+| `web_access_sitemap_status` | Poll progress: `awaiting_approval` → `running` (`pending`/`processed`) → `completed` \| `failed` \| `canceled` \| `token_cap_exceeded`. Once terminal it also returns `total` and one page of `urls` (`limit` ≤ 5000 default 1000, `offset`). |
+
+### `web_access_sitemap` — sitemap crawl jobs (deprecated)
+
+Use the three tools above instead; this one keeps working for existing callers. A crawl is a two-phase, asynchronous **quote → approve → poll → read** job:
 nothing is crawled or billed until the quote is explicitly approved.
 
 | `action`  | What it does                                                                                       |
@@ -55,19 +162,21 @@ report a `web_access_report` failure or repeat a failed call only to gather repo
 Reports use the configured API key for authentication but do not consume Web Access credits.
 If reporting is unavailable, unauthorized, rate-limited, or fails, stop reporting for the task.
 
-## Quick Start
+## Run it locally
+
+The npm package runs the server on your own machine over stdio. It needs a String API key.
 
 ### Run with npx
 
 ```bash
-env STRING_AI_API_KEY=your-key npx @usestring/mcp
+env STRING_API_KEY=your-key npx @usestring/mcp
 ```
 
 ### Install globally
 
 ```bash
 npm install -g @usestring/mcp
-STRING_AI_API_KEY=your-key string-ai-mcp
+STRING_API_KEY=your-key string-ai-mcp
 ```
 
 ### Build from source
@@ -77,14 +186,14 @@ git clone https://github.com/usestring/string-ai-mcp.git
 cd string-ai-mcp
 npm install
 npm run build
-STRING_AI_API_KEY=your-key node build/index.js
+STRING_API_KEY=your-key node build/index.js
 ```
 
 ## Environment Variables
 
 | Variable             | Required | Description                       |
 | -------------------- | -------- | --------------------------------- |
-| `STRING_AI_API_KEY`  | **Yes**  | Your String AI API key            |
+| `STRING_API_KEY`     | **Yes**  | Your String API key, from [String settings](https://portal.usestring.ai/settings). Read from 1.4.1 on. `STRING_AI_API_KEY`, the only name earlier releases read, still works, and wins when both are set. |
 
 ## Client Configuration
 
@@ -97,17 +206,17 @@ Press `Ctrl+Shift+P` → **Preferences: Open User Settings (JSON)** and add:
 	"inputs": [
 		{
 			"type": "promptString",
-			"id": "stringAiKey",
+			"id": "stringApiKey",
 			"description": "String AI API Key",
 			"password": true
 		}
 	],
 	"servers": {
-		"string-ai": {
+		"string": {
 			"command": "npx",
 			"args": ["-y", "@usestring/mcp"],
 			"env": {
-				"STRING_AI_API_KEY": "${input:stringAiKey}"
+				"STRING_API_KEY": "${input:stringApiKey}"
 			}
 		}
 	}
@@ -123,11 +232,11 @@ Open **Settings → Features → MCP Servers → + Add new global MCP server** a
 ```json
 {
   "mcpServers": {
-    "string-ai": {
+    "string": {
       "command": "npx",
       "args": ["-y", "@usestring/mcp"],
       "env": {
-        "STRING_AI_API_KEY": "YOUR_API_KEY"
+        "STRING_API_KEY": "YOUR_API_KEY"
       }
     }
   }
@@ -141,11 +250,11 @@ Add to `~/.codeium/windsurf/model_config.json`:
 ```json
 {
   "mcpServers": {
-    "string-ai": {
+    "string": {
       "command": "npx",
       "args": ["-y", "@usestring/mcp"],
       "env": {
-        "STRING_AI_API_KEY": "YOUR_API_KEY"
+        "STRING_API_KEY": "YOUR_API_KEY"
       }
     }
   }
@@ -159,11 +268,11 @@ Add to your `claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
-    "string-ai": {
+    "string": {
       "command": "npx",
       "args": ["-y", "@usestring/mcp"],
       "env": {
-        "STRING_AI_API_KEY": "YOUR_API_KEY"
+        "STRING_API_KEY": "YOUR_API_KEY"
       }
     }
   }
@@ -192,15 +301,15 @@ tool from the UI.
 
 1. The IDE spawns this server as a child process and communicates over **stdio**.
 2. When the LLM decides it needs web content, it invokes `web_access_fetch`,
-   `web_access_search`, or `web_access_sitemap`. Every failed call is reported exactly once with
+   `web_access_search`, or the `web_access_sitemap_*` tools. Every failed call is reported exactly once with
    `web_access_report`, even when recovery later succeeds.
 3. This server forwards the request to String AI's Web Access API (using your API key from
    the environment) and returns the result to the LLM.
 
 ## About String AI
 
-[String AI](https://usestring.ai) provides a powerful web access API that handles proxies,
-anti-bot measures, and JavaScript rendering automatically. Get your API key at
+[String AI](https://usestring.ai) provides a web access API that returns any page as clean,
+LLM-ready Markdown. Get your API key at
 [usestring.ai](https://usestring.ai).
 
 ## License
@@ -210,3 +319,28 @@ MIT
 ## Security
 
 Please report security vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
+
+## Maintenance and releases
+
+This server may remain unchanged while its tools meet the documented contract.
+Maintenance includes checking runtime and MCP compatibility, investigating reported
+issues, and releasing fixes when needed. Commit frequency alone does not establish
+whether the server works.
+
+Before shipping a change, run `npm test` and `node scripts/check-versions.mjs`.
+The package declares its supported Node.js versions in `package.json`; CI builds
+with Node.js 22. Report compatibility problems through
+[GitHub issues](https://github.com/usestring/string-ai-mcp/issues).
+
+The publish workflow records each published npm version as a
+[GitHub release](https://github.com/usestring/string-ai-mcp/releases), tagged at
+the source commit recorded in the npm package metadata. Release notes describe
+the changes. The release job checks npm directly, so a registry publication failure
+does not hide a version that users can already install. A manual workflow run can
+record a missing GitHub release for the current published version without
+republishing the package or changing its version.
+
+For a historical version whose source predates workflow changes, a maintainer may
+need to create its source tag first: GitHub limits the workflow token's ability
+to target older workflow history. The release job verifies that an existing tag
+matches the published package's source before using it.
