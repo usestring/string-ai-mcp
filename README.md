@@ -207,6 +207,9 @@ STRING_API_KEY=your-key node build/index.js
 | -------------------- | -------- | --------------------------------- |
 | `STRING_API_KEY`     | **Yes**  | Your String API key, from [String settings](https://portal.usestring.ai/settings). Read from 1.4.1 on. `STRING_AI_API_KEY`, the only name earlier releases read, still works, and wins when both are set. |
 
+`STRING_INTEGRATIONS`, optional: set it to `1` to also list `web_access_integrations` and
+`web_access_integration_run`; see [site integrations](#web_access_integrations-and-web_access_integration_run---site-integrations).
+
 ## Client Configuration
 
 ### VS Code
