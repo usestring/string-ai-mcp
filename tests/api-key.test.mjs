@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 import { test } from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -61,8 +60,9 @@ test("an empty STRING_AI_API_KEY falls back to STRING_API_KEY", async () => {
   assert.equal(authorization, "Bearer documented-name");
 });
 
-test("with neither set, the server exits 1 and names STRING_API_KEY", () => {
-  const run = spawnSync(process.execPath, ["build/index.js"], { env: envWith({}), encoding: "utf8", timeout: 10000 });
-  assert.equal(run.status, 1);
-  assert.match(run.stderr, /set STRING_API_KEY to a String API key from https:\/\/portal\.usestring\.ai\/settings/);
+test("with neither set, the server runs without a key, sends no Authorization header and names STRING_API_KEY", async () => {
+  const { authorization, stderr } = await authorizationSent({});
+  assert.equal(authorization, "");
+  assert.match(stderr, /No STRING_API_KEY set, so web_access_fetch and web_access_search run without a key/);
+  assert.match(stderr, /Set STRING_API_KEY to a String API key from https:\/\/portal\.usestring\.ai\/settings/);
 });
