@@ -102,12 +102,13 @@ The tools you get depend on where you connect:
 | `https://mcp.usestring.ai` with no key | `web_access_fetch`, `web_access_search` and `web_access_product_help` |
 | `https://mcp.usestring.ai?login`, or `https://mcp.usestring.ai` with an API key | Those three, plus `web_access_request`, `web_access_interact`, `web_access_sitemap_quote`, `web_access_sitemap_start`, `web_access_sitemap_status` and `web_access_balance` |
 | `https://mcp.usestring.ai/integration` | All of the above, plus `web_access_integrations` and `web_access_integration_run` |
-| The npm package, run locally | `web_access_fetch`, `web_access_search`, `web_access_product_help`, `web_access_balance`, `web_access_sitemap_quote`, `web_access_sitemap_start`, `web_access_sitemap_status`, the deprecated `web_access_sitemap` and `web_access_report` |
+| The npm package, run locally | `web_access_fetch`, `web_access_request`, `web_access_search`, `web_access_product_help`, `web_access_balance`, `web_access_sitemap_quote`, `web_access_sitemap_start`, `web_access_sitemap_status`, the deprecated `web_access_sitemap` and `web_access_report` |
 
 `web_access_search`, `web_access_product_help`, `web_access_balance`, `web_access_sitemap_status`
-and `web_access_integrations` are read-only. So is `web_access_fetch` on the hosted server, where
-`web_access_interact` runs browser actions that can modify destination data and `web_access_request`
-sends writes. The npm package's fetch can send writes through `method` and `body`.
+and `web_access_integrations` are read-only. So is `web_access_fetch`, which sends only GET requests:
+`web_access_interact` runs browser actions that can modify destination data, and `web_access_request`
+sends writes. Releases of the npm package before `web_access_request` sent writes through fetch's
+`method` and `body`.
 `web_access_sitemap_start` and the npm package's `web_access_sitemap` start billed crawl jobs, and
 `web_access_integration_run` is billed to your account.
 
