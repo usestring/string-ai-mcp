@@ -125,6 +125,17 @@ If you exceed the limit, the API returns `429 Too Many Requests`. See
 [rate limits](https://docs.usestring.ai/api-reference/rate-limits) for plan limits and
 retry guidance.
 
+### `web_access_integrations` and `web_access_integration_run` - site integrations
+
+Site integrations are maintained extractors for specific sites that return typed rows instead of a page.
+The npm package lists these two tools only when `STRING_INTEGRATIONS=1` is set in the server's environment,
+beside `STRING_API_KEY`, as the hosted server lists them only at `https://mcp.usestring.ai/integration`.
+
+- `web_access_integrations` reads the public catalog: `list` gives every site and its actions, and `describe`
+  gives one site's input and output schemas, examples, request band and billing. It is free.
+- `web_access_integration_run` runs one action on an `input` that matches its schema, and is billed to your
+  account by the action's `billing`. See [Making a request](https://docs.usestring.ai/sites/making-a-request).
+
 ### `web_access_sitemap_quote`, `web_access_sitemap_start`, `web_access_sitemap_status`
 
 A crawl is a **quote → start → poll** job: nothing is crawled or billed until the user approves
