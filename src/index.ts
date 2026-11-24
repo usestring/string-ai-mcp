@@ -20,11 +20,19 @@ const { version: PACKAGE_VERSION } = createRequire(import.meta.url)("../package.
 };
 
 const API_BASE_URL = "https://request.usestring.ai/v1";
-const API_KEY = process.env.STRING_AI_API_KEY ?? "";
+// STRING_API_KEY is the name the String CLI and docs use. STRING_AI_API_KEY, the
+// name releases before 1.4.1 read, wins when both are set: it can only have been
+// set for this server, while STRING_API_KEY is often exported in the shell for the
+// CLI and reaches the server through the client's environment.
+const LEGACY_API_KEY = process.env.STRING_AI_API_KEY || "";
+const API_KEY = LEGACY_API_KEY || process.env.STRING_API_KEY || "";
 
 if (!API_KEY) {
-	console.error("Error: STRING_AI_API_KEY environment variable is required.");
+	console.error("Error: set STRING_API_KEY to a String API key from https://portal.usestring.ai/settings.");
 	process.exit(1);
+}
+if (LEGACY_API_KEY && process.env.STRING_API_KEY && process.env.STRING_API_KEY !== LEGACY_API_KEY) {
+	console.error("Using the key in STRING_AI_API_KEY; STRING_API_KEY is also set, to a different key, and is ignored.");
 }
 interface ApiErrorBody {
 	error?: string;
@@ -65,6 +73,11 @@ interface ApiRequestOptions {
 	signal?: AbortSignal;
 }
 
+// Tells the String API which first-party surface a request came from; it is telemetry only and
+// never affects authorization or billing.
+const REQUEST_SOURCE_HEADER = "x-string-source";
+const REQUEST_SOURCE = "self_hosted_mcp";
+
 async function apiFetch(path: string, { method = "POST", query, body, signal }: ApiRequestOptions = {}): Promise<Response> {
 	const url = new URL(`${API_BASE_URL}${path}`);
 	for (const [key, value] of Object.entries(query ?? {})) {
@@ -76,6 +89,7 @@ async function apiFetch(path: string, { method = "POST", query, body, signal }: 
 		signal,
 		headers: {
 			Authorization: `Bearer ${API_KEY}`,
+			[REQUEST_SOURCE_HEADER]: REQUEST_SOURCE,
 			...(body !== undefined ? { "Content-Type": "application/json" } : {}),
 		},
 		body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -165,7 +179,7 @@ interface SearchPlace {
  * Every field beside results and zeroResults is a surface Google rendered around the ranked
  * documents (knowledge panel, AI overviews, local pack, People also ask, ...). Each is present
  * only when the page carried it and is never merged into results; only Google returns them.
- * The full shape is documented at https://docs.usestring.ai/docs/api-reference/search#response.
+ * The full shape is documented at https://docs.usestring.ai/api-reference/search#response.
  */
 interface SearchResponse {
 	results: SearchResult[];
@@ -235,6 +249,7 @@ const PRODUCT_HELP_EXCERPT_BUDGET = 4 * 1024;
 const PRODUCT_HELP_CANDIDATE_COUNT = 8;
 const PRODUCT_HELP_SOURCE_LIMIT = 24 * 1024;
 const PRODUCT_HELP_CATALOG_LIMIT = 512 * 1024;
+const PRODUCT_HELP_DOCS_HOST = "docs.usestring.ai";
 const PRODUCT_HELP_CANONICAL_PATHS = ["/products", "/web-access", "/composer", "/managed-services", "/finance", "/pricing"];
 const PRODUCT_HELP_HTML_ONLY_PATHS = new Set(["/trust", "/security", "/subprocessors"]);
 
@@ -362,6 +377,17 @@ function productHelpTerms(question: string): string[] {
 	return [...terms];
 }
 
+/**
+ * The path a catalog page ranks by. A page on the docs host ranks by the path it had under the
+ * portal's /docs, so the MCP setup pages keep their intent score and a docs section such as
+ * /composer never passes for the marketing page of the same name, whichever host the catalog lists.
+ */
+function productHelpRankPath(documentUrl: string): string {
+	const url = new URL(documentUrl);
+	const path = url.pathname.replace(/\/$/, "");
+	return url.hostname === PRODUCT_HELP_DOCS_HOST ? `/docs${path}` : path;
+}
+
 function rankProductHelpDocuments(question: string, documents: ProductHelpDocument[]): ProductHelpDocument[] {
 	const terms = productHelpTerms(question);
 	const canonicalPaths = new Set(PRODUCT_HELP_CANONICAL_PATHS);
@@ -369,7 +395,7 @@ function rankProductHelpDocuments(question: string, documents: ProductHelpDocume
 		.map((document, index) => {
 			const title = document.title.toLowerCase();
 			const description = document.description.toLowerCase();
-			const path = new URL(document.url).pathname.replace(/\/$/, "").toLowerCase();
+			const path = productHelpRankPath(document.url).toLowerCase();
 			let score = 0;
 			for (const term of terms) {
 				if (title.includes(term)) score += 6;
@@ -393,7 +419,7 @@ function rankProductHelpDocuments(question: string, documents: ProductHelpDocume
 	const selected = ranked.filter(({ score }) => score > 0).map(({ document }) => document);
 	for (const path of PRODUCT_HELP_CANONICAL_PATHS) {
 		const fallback = documents.find(
-			(document) => new URL(document.url).pathname.replace(/\/$/, "") === path && !selected.includes(document),
+			(document) => productHelpRankPath(document.url) === path && !selected.includes(document),
 		);
 		if (fallback) selected.push(fallback);
 	}
@@ -537,6 +563,39 @@ const server = new McpServer({
 	description:
 		"String AI Web Access MCP Server - tools for web fetching (web_access_fetch), search (web_access_search), whole-site URL crawling (web_access_sitemap), and credit-free failure reporting (web_access_report).",
 });
+
+const accountBalanceSchema = z.object({
+	currency: z.literal("USD"),
+	balance: z.number().finite(),
+	spent: z.number().finite(),
+	held: z.number().finite(),
+	remaining: z.number().finite().nonnegative(),
+	exhausted: z.boolean(),
+	asOf: z.string().datetime(),
+});
+
+server.registerTool(
+	"web_access_balance",
+	{
+		title: "Check account balance",
+		description: "Read your String account's USD balance, recorded spend, held credit and remaining credit. Free to call, including when credit is exhausted. asOf is query time.",
+		annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true },
+		inputSchema: z.object({}).strict(),
+		outputSchema: accountBalanceSchema,
+	},
+	async () => {
+		try {
+			const data = accountBalanceSchema.parse(await apiRequestJson<unknown>("/account/balance", { method: "GET" }));
+			return {
+				content: [{ type: "text" as const, text: `Remaining credit: ${data.remaining} ${data.currency} (recorded usage as of ${data.asOf})` }],
+				structuredContent: data,
+			};
+		} catch (err) {
+			const message = err instanceof Error ? err.message : String(err);
+			return { isError: true, content: [{ type: "text" as const, text: `Balance failed: ${message}` }] };
+		}
+	},
+);
 
 server.registerTool(
 	"web_access_product_help",
@@ -984,16 +1043,29 @@ function sitemapStatusDetail(status: SitemapJobStatusResponse): string {
 	return "";
 }
 
+function sitemapQuoteBody({
+	url,
+	maxPages,
+	maxDepth,
+	pathPrefix,
+	budgetUsd,
+	useSitemap,
+}: Omit<SitemapToolArgs, "action" | "jobId" | "limit" | "offset">): Record<string, unknown> {
+	const body: Record<string, unknown> = { url };
+	if (maxPages !== undefined) body.maxPages = maxPages;
+	if (maxDepth !== undefined) body.maxDepth = maxDepth;
+	if (pathPrefix !== undefined) body.pathPrefix = pathPrefix;
+	if (budgetUsd !== undefined) body.budgetUsd = budgetUsd;
+	if (useSitemap) body.useSitemap = true;
+	return body;
+}
+
 const sitemapHandlers: Record<string, (args: SitemapToolArgs) => Promise<ReturnType<typeof sitemapResult>>> = {
 	submit: async ({ url, maxPages, maxDepth, pathPrefix, budgetUsd, useSitemap }) => {
 		if (!url) throw new Error('url is required for action "submit"');
-		const body: Record<string, unknown> = { url };
-		if (maxPages !== undefined) body.maxPages = maxPages;
-		if (maxDepth !== undefined) body.maxDepth = maxDepth;
-		if (pathPrefix !== undefined) body.pathPrefix = pathPrefix;
-		if (budgetUsd !== undefined) body.budgetUsd = budgetUsd;
-		if (useSitemap) body.useSitemap = true;
-		const data = await apiRequestJson<SitemapSubmitResponse>("/sitemap", { body });
+		const data = await apiRequestJson<SitemapSubmitResponse>("/sitemap", {
+			body: sitemapQuoteBody({ url, maxPages, maxDepth, pathPrefix, budgetUsd, useSitemap }),
+		});
 		return sitemapResult(
 			`sitemap job ${data.jobId} quoted: ~${data.estimatedPages} pages for $${data.estimatedCostUsd} — awaiting approval (call approve to start)`,
 			data,
@@ -1089,9 +1161,12 @@ interface SitemapToolArgs {
 server.registerTool(
 	"web_access_sitemap",
 	{
-		title: "Map a website's URLs",
-		annotations: { readOnlyHint: true, openWorldHint: true },
+		title: "Map a website's URLs (deprecated)",
+		// approve starts a billed crawl, so the tool as a whole is not read-only.
+		annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
 		description: `
+**Deprecated:** use web_access_sitemap_quote, web_access_sitemap_start and web_access_sitemap_status, which split this lifecycle into a free quote, a billed start and a read-only poll. This tool keeps working for existing callers.
+
 Crawl an entire website and map its URLs using String AI's Web Access API sitemap crawler. Starting from one URL it follows same-domain links breadth-first (optionally seeded from the site's /sitemap.xml) and records every URL it reaches with fetch status, depth, and parent. The crawl runs asynchronously server-side, so it handles whole sites that a single web_access_fetch call cannot.
 
 **Best for:** discovering all pages/URLs of a site (site audits, building scraping worklists, coverage checks) before fetching individual pages with web_access_fetch.
@@ -1189,6 +1264,210 @@ This single tool drives the whole job lifecycle through \`action\`:
 					},
 				],
 			};
+		}
+	},
+);
+
+// The three sitemap tools split web_access_sitemap's lifecycle the way the hosted
+// server does, so a free quote, a billed start and a read-only poll each declare
+// their own annotations. The poll pages the URLs once the job is terminal, which
+// leaves no separate results tool.
+const sitemapTerminalStatuses = new Set(["completed", "failed", "canceled", "token_cap_exceeded"]);
+
+function sitemapToolError(tool: string, err: unknown) {
+	const message = err instanceof Error ? err.message : String(err);
+	return {
+		isError: true,
+		content: [{ type: "text" as const, text: `${tool} failed: ${message}` }],
+	};
+}
+
+server.registerTool(
+	"web_access_sitemap_quote",
+	{
+		title: "Quote a site crawl",
+		// Records a quote and crawls nothing yet; each call is a new job.
+		annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true, idempotentHint: false },
+		description: `
+Quote an asynchronous crawl of authorized public pages on one website. Nothing is crawled or billed: the quote creates a job that waits for approval. Starting from one URL, the crawler follows same-domain links breadth-first and can also seed from the site's /sitemap.xml. Requests must comply with destination policy, robots directives, rate limits, and access controls.
+
+Use it to discover pages for site audits, authorized retrieval worklists, or coverage checks before fetching individual pages.
+**Not for:** reading one page's content (use web_access_fetch) or open-ended web queries (use web_access_search).
+
+Requires \`url\`. Optional: \`maxPages\` (1–10000, default 10), \`maxDepth\` (1–100, default 2), \`pathPrefix\` (only crawl URLs whose path starts with this, e.g. "/docs"), \`budgetUsd\` (spend ceiling; the crawl stops with status token_cap_exceeded if it would exceed it), \`useSitemap\` (also seed the site's root /sitemap.xml — one extra billed page, but finds pages links miss).
+\`\`\`json
+{ "url": "https://example.com", "maxPages": 200, "maxDepth": 3 }
+\`\`\`
+
+**Returns:** \`jobId\`, \`estimatedPages\`, and \`estimatedCostUsd\`, with status \`awaiting_approval\`. A 403 means the target domain is blocked for this account; contact String support.
+
+**Next:** show the user \`estimatedCostUsd\`. Only once they approve that cost, call web_access_sitemap_start with the \`jobId\`.
+`,
+		inputSchema: {
+			url: z
+				.string()
+				.url()
+				.describe("The full http(s) URL to start crawling from. The crawl stays on this URL's domain."),
+			maxPages: z
+				.number()
+				.int()
+				.min(1)
+				.max(10_000)
+				.optional()
+				.describe("Maximum pages to fetch, 1-10000 (server default 10). Each fetched page is billed once the crawl starts."),
+			maxDepth: z
+				.number()
+				.int()
+				.min(1)
+				.max(100)
+				.optional()
+				.describe("Maximum link depth from the start URL, 1-100 (server default 2)."),
+			pathPrefix: z
+				.string()
+				.optional()
+				.describe("Restrict the crawl to URLs whose path starts with this prefix, e.g. '/docs'."),
+			budgetUsd: z
+				.number()
+				.min(0.0001)
+				.optional()
+				.describe(
+					"Spend ceiling in USD (min 0.0001). The crawl finalizes as token_cap_exceeded when it would exceed this; omit to let the approved quote be the cap.",
+				),
+			useSitemap: z
+				.boolean()
+				.optional()
+				.describe(
+					"Also seed the crawl from the site's root /sitemap.xml (one extra billed page; finds pages that internal links miss).",
+				),
+		},
+	},
+	async ({ url, maxPages, maxDepth, pathPrefix, budgetUsd, useSitemap }) => {
+		try {
+			const data = await apiRequestJson<SitemapSubmitResponse>("/sitemap", {
+				body: sitemapQuoteBody({ url, maxPages, maxDepth, pathPrefix, budgetUsd, useSitemap }),
+			});
+			return sitemapResult(
+				`sitemap job ${data.jobId} quoted: ~${data.estimatedPages} pages for $${data.estimatedCostUsd} — awaiting approval (call web_access_sitemap_start to start)`,
+				data,
+			);
+		} catch (err) {
+			return sitemapToolError("web_access_sitemap_quote", err);
+		}
+	},
+);
+
+server.registerTool(
+	"web_access_sitemap_start",
+	{
+		title: "Start a quoted crawl",
+		// Bills and crawls an outside site, adding charges and data but removing nothing.
+		annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true, idempotentHint: false },
+		description: `
+Start a crawl that web_access_sitemap_quote quoted. This is the billing-consent step: pages are billed as they are fetched, capped by the quote or \`budgetUsd\`. Call it only after the user has approved the quote's \`estimatedCostUsd\`.
+
+Requires \`jobId\`. Fails with status 402 if the account balance cannot cover the quote; a 409 partial_state error means an earlier start was interrupted — just call this tool again. A 404 means the job doesn't exist or belongs to another account.
+
+**Returns:** the \`jobId\` and its new \`status\`.
+
+**Next:** poll web_access_sitemap_status until the job is terminal; the terminal response carries its URLs.
+`,
+		inputSchema: {
+			jobId: z.string().min(1).describe("The jobId web_access_sitemap_quote returned."),
+		},
+	},
+	async ({ jobId }) => {
+		try {
+			const data = await apiRequestJson<SitemapMutationResponse>(`/sitemap/${encodeURIComponent(jobId)}/approve`);
+			return sitemapResult(`sitemap job ${data.jobId} started: ${data.status}`, data);
+		} catch (err) {
+			return sitemapToolError("web_access_sitemap_start", err);
+		}
+	},
+);
+
+server.registerTool(
+	"web_access_sitemap_status",
+	{
+		title: "Check a crawl and read its URLs",
+		// Reads the job and its stored URLs; checking a job changes nothing.
+		annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true },
+		description: `
+Poll a crawl job until it is terminal; the terminal response also carries the URLs it discovered. Statuses: \`awaiting_approval\` → \`running\` → terminal \`completed\` | \`failed\` | \`canceled\` | \`token_cap_exceeded\` (budget hit before maxPages; collected results are still readable). While running it returns \`pending\` and \`processed\` counts and no URLs; a \`partial_state\` status means an interrupted start — call web_access_sitemap_start again to repair it. Poll every few seconds for small crawls; give hundreds-of-pages crawls tens of seconds between polls.
+
+Once the job is terminal, the response carries \`total\` and \`urls\`, one page of the discovered URLs. Optional \`limit\` (1–5000, default 1000) and \`offset\` (≥ 0) choose the page; out-of-range values are rejected. Each entry has \`url\`, \`statusCode\` (0 = discovered but not fetched), \`depth\`, \`parentUrl\`, \`isSitemap\`, \`sourceType\`, and an \`error\` when that page failed. \`discoveredUrls\` (links found on the page) is only present for ~1h after completion; afterwards results come from durable storage which omits it — everything else stays available.
+
+Requires \`jobId\`. A 404 means the job doesn't exist or belongs to another account. If the job is terminal but its URLs cannot be read, the call fails rather than return the status without them; call it again.
+
+**Returns:** the \`jobId\` and \`status\`, with \`pending\`, \`processed\`, \`pagesProcessed\`, \`estimatedCostUsd\`, \`errorMessage\` and \`finishedAt\` as the job reports them, and \`total\` and \`urls\` once it is terminal.
+
+**Next:** call again with \`offset\` advanced by the page size until it reaches \`total\`; read a page's content with web_access_fetch.
+`,
+		inputSchema: {
+			jobId: z.string().min(1).describe("The jobId web_access_sitemap_quote returned."),
+			limit: z
+				.number()
+				.int()
+				.min(1)
+				.max(5000)
+				.optional()
+				.describe("Once the job is terminal: URLs per page, 1-5000 (default 1000)."),
+			offset: z
+				.number()
+				.int()
+				.min(0)
+				.optional()
+				.describe("Once the job is terminal: number of URLs to skip for pagination (0 or more)."),
+		},
+	},
+	async ({ jobId, limit, offset }) => {
+		const id = encodeURIComponent(jobId);
+		try {
+			let status: SitemapJobStatusResponse;
+			try {
+				status = await apiRequestJson<SitemapJobStatusResponse>(`/sitemap/${id}`, { method: "GET" });
+			} catch (err) {
+				// partial_state arrives as a 409, but it is a queryable job state with a
+				// documented repair (start again), not a failure of the poll itself.
+				if (err instanceof ApiError && err.body.status === "partial_state") {
+					return sitemapResult(
+						`sitemap job ${jobId}: partial_state — start handoff incomplete, call web_access_sitemap_start again`,
+						{ jobId, status: "partial_state" },
+					);
+				}
+				throw err;
+			}
+			// A warm status can inline the whole URL list; the paged read below is the
+			// only place URLs come from, so a poll stays bounded.
+			const { urls: inlined, ...payload } = status;
+			if (payload.pagesProcessed === undefined && inlined?.length) {
+				payload.pagesProcessed = inlined.length;
+			}
+			const summary = `sitemap job ${payload.jobId}: ${payload.status}${sitemapStatusDetail(payload)}`;
+			if (!sitemapTerminalStatuses.has(payload.status)) {
+				return sitemapResult(summary, payload);
+			}
+			let page: SitemapResultsResponse;
+			try {
+				page = await apiRequestJson<SitemapResultsResponse>(`/sitemap/${id}/urls`, {
+					method: "GET",
+					query: { limit, offset },
+				});
+			} catch (err) {
+				// A terminal status without urls would read as a crawl that found
+				// nothing; a failed call cannot be mistaken for data, and checking again
+				// is free.
+				const message = err instanceof Error ? err.message : String(err);
+				throw new Error(
+					`sitemap job ${jobId} is ${payload.status}, but its URLs could not be read: ${message}; call web_access_sitemap_status again`,
+				);
+			}
+			return sitemapResult(`${summary}; ${page.urls.length} of ${page.total} urls (offset ${offset ?? 0})`, {
+				...payload,
+				total: page.total,
+				urls: page.urls,
+			});
+		} catch (err) {
+			return sitemapToolError("web_access_sitemap_status", err);
 		}
 	},
 );

@@ -21,22 +21,22 @@ async function withClient(fn, env = {}) {
 
 test("help selects canonical pages within one shared UTF-8 excerpt budget", async () => {
   await withClient(async (client) => {
-    for (const [question, paths] of [
-      ["How does String price Web Access requests?", ["/pricing"]],
-      ["How do I connect String MCP to Claude Code?", ["/docs/mcp/remote"]],
-      ["How do I run self-hosted MCP locally?", ["/docs/mcp/self-hosted"]],
-      ["How does Composer differ from Bespoke Web Datasets?", ["/composer", "/managed-services"]],
+    for (const [question, urls] of [
+      ["How does String price Web Access requests?", ["https://usestring.ai/pricing"]],
+      ["How do I connect String MCP to Claude Code?", ["https://docs.usestring.ai/mcp/remote"]],
+      ["How do I run self-hosted MCP locally?", ["https://docs.usestring.ai/mcp/self-hosted"]],
+      ["How does Composer differ from Bespoke Web Datasets?", ["https://usestring.ai/composer", "https://usestring.ai/managed-services"]],
     ]) {
       const result = await client.callTool({ name: "web_access_product_help", arguments: { question } });
       assert.ok(!result.isError, JSON.stringify(result));
       const { sources } = JSON.parse(result.content[0].text);
-      assert.deepEqual(sources.map((source) => new URL(source.url).pathname).sort(), paths.sort());
+      assert.deepEqual(sources.map((source) => source.url).sort(), urls.sort());
       assert.ok(sources.reduce((total, source) => total + Buffer.byteLength(source.excerpt), 0) <= 4096);
       for (const source of sources) {
         assert.equal(source.truncated, true);
         assert.ok(!source.excerpt.includes("\ufffd"));
       }
-      if (paths.includes("/pricing")) assert.match(sources[0].excerpt, /Starter costs \$20/);
+      if (urls.includes("https://usestring.ai/pricing")) assert.match(sources[0].excerpt, /Starter costs \$20/);
     }
   });
 });
