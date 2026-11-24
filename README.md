@@ -102,7 +102,7 @@ The tools you get depend on where you connect:
 | `https://mcp.usestring.ai` with no key | `web_access_fetch`, `web_access_search` and `web_access_product_help` |
 | `https://mcp.usestring.ai?login`, or `https://mcp.usestring.ai` with an API key | Those three, plus `web_access_request`, `web_access_interact`, `web_access_sitemap_quote`, `web_access_sitemap_start`, `web_access_sitemap_status` and `web_access_balance` |
 | `https://mcp.usestring.ai/integration` | All of the above, plus `web_access_integrations` and `web_access_integration_run` |
-| The npm package, run locally | `web_access_fetch`, `web_access_search`, `web_access_product_help`, `web_access_sitemap_quote`, `web_access_sitemap_start`, `web_access_sitemap_status`, the deprecated `web_access_sitemap` and `web_access_report` |
+| The npm package, run locally | `web_access_fetch`, `web_access_search`, `web_access_product_help`, `web_access_balance`, `web_access_sitemap_quote`, `web_access_sitemap_start`, `web_access_sitemap_status`, the deprecated `web_access_sitemap` and `web_access_report` |
 
 `web_access_search`, `web_access_product_help`, `web_access_balance`, `web_access_sitemap_status`
 and `web_access_integrations` are read-only. The npm package's fetch can send writes through
@@ -111,6 +111,20 @@ modify destination data, as does the hosted `web_access_interact`. `web_access_r
 writes. `web_access_sitemap_start` and the npm
 package's `web_access_sitemap` start billed crawl jobs, and `web_access_integration_run` is billed
 to your account.
+
+### `web_access_balance` - account balance
+
+The npm package also provides `web_access_balance`. Call it with no arguments to read your
+organization's USD `balance`, recorded `spent`, `held`, `remaining`, `exhausted` and `asOf`.
+The read is free and works when your balance is exhausted. `asOf` is query time; unrecorded
+usage is excluded. Use the `exhausted` flag to check exhaustion, rather than deriving it
+from rounded monetary amounts. The snapshot is not a final invoice or a guarantee that a
+later request can run.
+
+Balance checks count toward your organization's API rate limit alongside other requests.
+If you exceed the limit, the API returns `429 Too Many Requests`. See
+[rate limits](https://docs.usestring.ai/api-reference/rate-limits) for plan limits and
+retry guidance.
 
 ### `web_access_sitemap_quote`, `web_access_sitemap_start`, `web_access_sitemap_status`
 
