@@ -1262,10 +1262,10 @@ This single tool drives the whole job lifecycle through \`action\`:
 	},
 );
 
-// The /v3 sitemap tools split web_access_sitemap's lifecycle the way the hosted
-// server's /v3 surface does, so a free quote, a billed start and a read-only poll
-// each declare their own annotations. The poll pages the URLs once the job is
-// terminal, which leaves no separate results tool.
+// The three sitemap tools split web_access_sitemap's lifecycle the way the hosted
+// server does, so a free quote, a billed start and a read-only poll each declare
+// their own annotations. The poll pages the URLs once the job is terminal, which
+// leaves no separate results tool.
 const sitemapTerminalStatuses = new Set(["completed", "failed", "canceled", "token_cap_exceeded"]);
 
 function sitemapToolError(tool: string, err: unknown) {
