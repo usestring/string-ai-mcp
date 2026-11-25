@@ -847,6 +847,79 @@ server.registerTool(
 );
 
 server.registerTool(
+	"web_access_request",
+	{
+		title: "Send a request with a body",
+		// A body sent to the destination can create, change or delete data there.
+		annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true, idempotentHint: false },
+		description: `
+Send a POST, PUT or PATCH request with a body to a caller-specified URL, through String's Web Access API. It works like web_access_fetch, but for calls that submit data rather than read a page: a JSON API that only accepts POST, a GraphQL endpoint, a search backend that takes a body.
+
+**Use web_access_fetch instead** whenever you only need to read a page. This tool sends a body to the destination rather than reading it, so use it only for a request the user actually asked for.
+
+**Usage Example:**
+\`\`\`json
+{ "url": "https://api.example.com/search", "method": "POST", "body": { "q": "widgets" } }
+\`\`\`
+
+**Optional parameters (omit unless you need them):**
+- \`format\` — \`json\` (default, a \`{ statusCode, headers, data }\` envelope with the destination's status and headers), \`raw\` (the destination's verbatim body), or \`markdown\` (the body as clean text).
+- \`headers\` — custom request headers to forward (max 50): a content type, a token the user supplied, a cookie.
+- \`countryCode\` — ISO 3166-1 alpha-2 (e.g. "US"): the request reaches the destination from that country.
+- \`solveCaptcha\` — defaults true; set false to fail fast instead of spending effort solving a challenge.
+
+\`executeJS\` and browser actions are not available here: both run a browser session, which is always a GET.
+
+**Returns:** the JSON envelope by default; the verbatim body or Markdown when \`format\` is set accordingly.
+
+Requests must comply with destination policy, robots directives, rate limits, and access controls.
+`,
+		inputSchema: {
+			url: z.string().url().describe("The endpoint the request goes to, as its full web address."),
+			method: z
+				.enum(["POST", "PUT", "PATCH"])
+				.describe("HTTP method: POST, PUT or PATCH. GET is not accepted here — use web_access_fetch to read a page."),
+			body: z
+				.union([z.string(), z.record(z.string(), z.unknown())])
+				.optional()
+				.describe("Request body. A string is sent as-is; an object is JSON-stringified."),
+			format: z
+				.enum(["json", "raw", "markdown"])
+				.default("json")
+				.describe(
+					"How the destination's response comes back: 'json' (default) for a { statusCode, headers, data } envelope, which suits most calls that send a body; 'raw' for the verbatim body alone; 'markdown' for the body as clean text.",
+				),
+			headers: z
+				.record(z.string(), z.string())
+				.optional()
+				.describe("Request headers to send, each name to its value (max 50): a content type, a token the user supplied, a cookie."),
+			countryCode: z
+				.string()
+				.length(2)
+				.optional()
+				.describe("ISO 3166-1 alpha-2 country code, e.g. 'US': the request reaches the destination from that country."),
+			solveCaptcha: z
+				.boolean()
+				.optional()
+				.describe("Whether to attempt captcha solving. Defaults to true server-side; set false to fail fast on challenges."),
+		},
+	},
+	async ({ url, method, body, format, headers, countryCode, solveCaptcha }) => {
+		try {
+			const requestBody: Record<string, unknown> = { url, method, format };
+			if (body !== undefined) requestBody.body = body;
+			if (headers) requestBody.headers = headers;
+			if (countryCode) requestBody.countryCode = countryCode;
+			if (solveCaptcha !== undefined) requestBody.solveCaptcha = solveCaptcha;
+			return { content: [{ type: "text" as const, text: await apiRequestText("/fetch", requestBody) }] };
+		} catch (err) {
+			const message = err instanceof Error ? err.message : String(err);
+			return { isError: true, content: [{ type: "text" as const, text: `${method} ${url} failed: ${message}` }] };
+		}
+	},
+);
+
+server.registerTool(
 	"web_access_fetch",
 	{
 		title: "Fetch a webpage",
@@ -860,74 +933,66 @@ Fetch a caller-specified HTTP(S) URL and get clean, LLM-ready Markdown back. If 
 \`\`\`
 
 **Best for:** any URL, especially sites that block automated traffic or render their content client-side (news, docs, blogs, web apps).
-**Not for:** searching the web when you don't have a URL — use web_access_search instead.
+**Not for:** searching the web when you don't have a URL — use web_access_search instead. Sending a POST, PUT or PATCH with a body — use web_access_request instead.
 
 **Optional parameters (omit unless you need them):**
 - \`format\` — \`markdown\` (default), \`raw\` (the destination's verbatim body), or \`json\` (a \`{ statusCode, headers, data }\` envelope with the destination's status and headers).
 - \`executeJS\` — set true to render JavaScript for SPAs when the content comes back empty. Cannot be combined with \`headers\`.
-- \`method\` + \`body\` — use POST/PUT/PATCH with a body to send writes (\`body\` is rejected on GET).
 - \`headers\` — forward custom request headers. Not supported when \`executeJS\` is enabled.
 - \`countryCode\` — ISO 3166-1 alpha-2 (e.g. "US") to route through a proxy in that country.
 - \`solveCaptcha\` — defaults true; set false to fail fast instead of spending effort solving a challenge.
 
 **Returns:** Markdown by default; the verbatim body or a JSON envelope when \`format\` is set accordingly.
 `,
-		inputSchema: {
-			url: z.string().url().describe("The full URL of the webpage to fetch. Must be a valid HTTP/HTTPS URL."),
-			format: z
-				.enum(["json", "raw", "markdown"])
-				.default("markdown")
-				.describe(
-					"Output format: 'markdown' for clean LLM-optimized text (recommended), 'raw' for the destination's verbatim body, 'json' for a { statusCode, headers, data } envelope.",
-				),
-			executeJS: z
-				.boolean()
-				.default(false)
-				.describe(
-					"Enable JavaScript rendering for SPAs and dynamic content. Set to true if content appears empty or incomplete. Cannot be combined with custom headers.",
-				),
-			method: z
-				.enum(["GET", "POST", "PUT", "PATCH"])
-				.default("GET")
-				.describe("HTTP method for the request. Use POST/PUT/PATCH to send a body."),
-			body: z
-				.union([z.string(), z.record(z.string(), z.unknown())])
-				.optional()
-				.describe(
-					"Request body for POST/PUT/PATCH. A string is sent as-is; an object is JSON-stringified. Not allowed for GET.",
-				),
-			headers: z
-				.record(z.string(), z.string())
-				.optional()
-				.describe("Custom request headers to forward (max 50). Not supported when executeJS is enabled."),
-			countryCode: z
-				.string()
-				.length(2)
-				.optional()
-				.describe("ISO 3166-1 alpha-2 country code for geolocated proxy routing, e.g. 'US'."),
-			solveCaptcha: z
-				.boolean()
-				.optional()
-				.describe(
-					"Whether to attempt captcha solving. Defaults to true server-side; set false to fail fast on challenges.",
-				),
-		},
+		// Strict, so a call that still sends method or body is refused and pointed at web_access_request, rather than
+		// quietly sent as a GET without its body.
+		inputSchema: z
+			.object({
+				url: z.string().url().describe("The full URL of the webpage to fetch. Must be a valid HTTP/HTTPS URL."),
+				format: z
+					.enum(["json", "raw", "markdown"])
+					.default("markdown")
+					.describe(
+						"Output format: 'markdown' for clean LLM-optimized text (recommended), 'raw' for the destination's verbatim body, 'json' for a { statusCode, headers, data } envelope.",
+					),
+				executeJS: z
+					.boolean()
+					.default(false)
+					.describe(
+						"Enable JavaScript rendering for SPAs and dynamic content. Set to true if content appears empty or incomplete. Cannot be combined with custom headers.",
+					),
+				headers: z
+					.record(z.string(), z.string())
+					.optional()
+					.describe("Custom request headers to forward (max 50). Not supported when executeJS is enabled."),
+				countryCode: z
+					.string()
+					.length(2)
+					.optional()
+					.describe("ISO 3166-1 alpha-2 country code for geolocated proxy routing, e.g. 'US'."),
+				solveCaptcha: z
+					.boolean()
+					.optional()
+					.describe(
+						"Whether to attempt captcha solving. Defaults to true server-side; set false to fail fast on challenges.",
+					),
+			})
+			.strict(
+				"web_access_fetch reads a page with GET and takes only url, format, executeJS, headers, countryCode and solveCaptcha. To send a POST, PUT or PATCH with a body, use web_access_request.",
+			),
 	},
 	async (args: {
 		url: string;
 		format: "json" | "raw" | "markdown";
 		executeJS: boolean;
-		method: "GET" | "POST" | "PUT" | "PATCH";
-		body?: string | Record<string, unknown>;
 		headers?: Record<string, string>;
 		countryCode?: string;
 		solveCaptcha?: boolean;
 	}) => {
-		const { url, format, executeJS, method, body, headers, countryCode, solveCaptcha } = args;
+		const { url, format, executeJS, headers, countryCode, solveCaptcha } = args;
 		try {
-			const requestBody: Record<string, unknown> = { url, format, method };
+			const requestBody: Record<string, unknown> = { url, format };
 			if (executeJS) requestBody.executeJS = true;
-			if (body !== undefined) requestBody.body = body;
 			if (headers) requestBody.headers = headers;
 			if (countryCode) requestBody.countryCode = countryCode;
 			if (solveCaptcha !== undefined) requestBody.solveCaptcha = solveCaptcha;
