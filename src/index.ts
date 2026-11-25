@@ -28,16 +28,25 @@ const LEGACY_API_KEY = process.env.STRING_AI_API_KEY || "";
 const API_KEY = LEGACY_API_KEY || process.env.STRING_API_KEY || "";
 
 if (!API_KEY) {
-	console.error("Error: set STRING_API_KEY to a String API key from https://portal.usestring.ai/settings.");
-	process.exit(1);
+	console.error(
+		"No STRING_API_KEY set, so web_access_fetch and web_access_search run without a key, within a free daily allowance. Set STRING_API_KEY to a String API key from https://portal.usestring.ai/settings for every tool and higher limits.",
+	);
 }
 if (LEGACY_API_KEY && process.env.STRING_API_KEY && process.env.STRING_API_KEY !== LEGACY_API_KEY) {
 	console.error("Using the key in STRING_AI_API_KEY; STRING_API_KEY is also set, to a different key, and is ignored.");
 }
+
+// Where a refusal sends someone running without a key. The refusal's own signupUrl wins when it has one.
+const SIGN_UP_URL = "https://portal.usestring.ai/sign-up";
+// Takes an agent from no key to its first call with one, including the sign-up steps a person would otherwise do.
+const ONBOARDING_SKILL_URL = "https://usestring.ai/agent-onboarding/SKILL.md";
+
 interface ApiErrorBody {
 	error?: string;
 	message?: string;
 	reason?: string;
+	// A refusal of a request sent without a key can name where to sign up.
+	signupUrl?: string;
 	// Sitemap error envelopes carry the job status (e.g. the 409 partial_state
 	// body), which handlers need to distinguish repairable states from failures.
 	status?: string;
@@ -54,6 +63,26 @@ function describeApiError(body: ApiErrorBody, fallback: string): string {
 		...Object.entries(body.details?.fieldErrors ?? {}).map(([field, messages]) => `${field}: ${messages.join("; ")}`),
 	];
 	return details.length > 0 ? `${head}: ${details.join(", ")}` : head;
+}
+
+// The errors the API names its refusals of requests without a key with. They set those refusals apart from a
+// destination's 403 or a rate limiter's 429 on the same statuses.
+const KEYLESS_LIMIT_REACHED = "Keyless limit reached";
+const KEYLESS_UNAVAILABLE = "Keyless access unavailable";
+
+// keylessRefusal says, in the words the agent reads, that the free allowance is spent or free access is off, and how
+// to keep going. Nothing sends a key here, so a 401 means the API would not serve the request without one. Any other
+// error, including a rate limiter's 429, which a retry gets past, is left as the API worded it.
+function keylessRefusal(status: number, body: ApiErrorBody): string | undefined {
+	let refusal: string;
+	if (body.error === KEYLESS_LIMIT_REACHED) {
+		refusal = "The free allowance is used up for today; it resets at 00:00 UTC.";
+	} else if (status === 401 || body.error === KEYLESS_UNAVAILABLE) {
+		refusal = "Free access is not available right now.";
+	} else {
+		return undefined;
+	}
+	return `${refusal} To keep going, sign up at ${body.signupUrl ?? SIGN_UP_URL} and set STRING_API_KEY in this server's environment to a String API key.`;
 }
 
 class ApiError extends Error {
@@ -88,7 +117,9 @@ async function apiFetch(path: string, { method = "POST", query, body, signal }: 
 		method,
 		signal,
 		headers: {
-			Authorization: `Bearer ${API_KEY}`,
+			// Without a key the header is left out entirely: the API checks any value in it as a key, even an empty one,
+			// and serves only a request with no header from the free allowance.
+			...(API_KEY ? { Authorization: `Bearer ${API_KEY}` } : {}),
 			[REQUEST_SOURCE_HEADER]: REQUEST_SOURCE,
 			...(body !== undefined ? { "Content-Type": "application/json" } : {}),
 		},
@@ -104,6 +135,7 @@ async function apiFetch(path: string, { method = "POST", query, body, signal }: 
 		} catch {
 			// ignore parse errors on the error body
 		}
+		if (!API_KEY) detail = keylessRefusal(res.status, errBody) ?? detail;
 		throw new ApiError(res.status, errBody, detail);
 	}
 
@@ -557,12 +589,119 @@ function formatRawSearch(html: string): string {
 	return `${head}\n${markup}\n${html}`;
 }
 
+const KEYLESS_INSTRUCTIONS =
+	"String Web Access is running without an API key. It provides tools to fetch caller-specified URLs and search public " +
+	"web results, within a daily allowance per caller address that resets at 00:00 UTC, and to answer questions about " +
+	"String's products. Use each tool only for the user's explicit request and within the destination's authorization, " +
+	"robots directives, rate limits, and access controls. For higher limits, every input and the other tools, set " +
+	`STRING_API_KEY in this server's environment to a String API key. ${ONBOARDING_SKILL_URL} explains how to get one.`;
+
 const server = new McpServer({
 	name: "@usestring/mcp",
 	version: PACKAGE_VERSION,
 	description:
 		"String AI Web Access MCP Server - tools for web fetching (web_access_fetch), search (web_access_search), whole-site URL crawling (web_access_sitemap), and credit-free failure reporting (web_access_report).",
-});
+}, API_KEY ? undefined : { instructions: KEYLESS_INSTRUCTIONS });
+
+function keylessFetchDescription(): string {
+	return `
+Fetch a caller-specified HTTP(S) URL and get clean, LLM-ready Markdown back, with no API key.
+
+**Primary use (the common case):** pass only a \`url\`. The page is fetched with a normal GET and returned as Markdown — no other parameters are needed.
+\`\`\`json
+{ "url": "https://example.com/article" }
+\`\`\`
+
+**Best for:** any public URL, including pages that render their content client-side (news, docs, blogs, web apps).
+**Not for:** searching the web when you don't have a URL — use web_access_search instead.
+
+**Optional parameters (omit unless you need them):**
+- \`format\` — \`markdown\` (default), \`raw\` (the destination's verbatim body), or \`json\` (a \`{ statusCode, headers, data }\` envelope with the destination's status and headers).
+- \`executeJS\` — set true to render JavaScript for SPAs when the content comes back empty. A rendered fetch counts for more of the daily allowance than a plain one.
+
+**Without a key:** each caller address has a daily allowance that resets at 00:00 UTC. Custom headers, a country, POST requests and the other tools need a String API key, set as STRING_API_KEY in this server's environment.
+
+**Returns:** Markdown by default; the verbatim body or a JSON envelope when \`format\` is set accordingly.
+
+Requests must comply with destination policy, robots directives, rate limits, and access controls.
+`;
+}
+
+function keylessSearchDescription(optional: string[]): string {
+	return `
+Search the public web for a query and get ranked organic results back, plus whatever Google rendered around them: knowledge panel, AI overview, People also ask, local pack, videos, discussions. No API key is needed.
+
+**Primary use:** pass only \`query\`. A field the input schema does not list is rejected before the call.
+\`\`\`json
+{ "query": "latest developments in AI agents 2026" }
+\`\`\`
+
+**Best for:** a request that names no URL, or one that needs sources found before anything is read.
+**Not for:** a URL you already have — use web_access_fetch instead.
+
+**Optional inputs**, each described in the input schema: ${series(optional.map((field) => `\`${field}\``))}.
+
+**Without a key:** one results page, about 10 results, per call, within a daily allowance per caller address that resets at 00:00 UTC. More results, later pages, the other Google tabs and the other filters need a String API key, set as STRING_API_KEY in this server's environment.
+
+**Returns:** the ranked organic results as numbered lines, each with position, title, URL and snippet. When the page carried more, an "Also on the page" JSON block follows with every surface Google rendered, such as the knowledge panel (\`entity\`), local-pack \`places\`, AI \`overviews\`, \`peopleAlsoAsk\` and \`relatedSearches\`.
+
+A snippet is not the page, and an overview is not a source. To read a result, call web_access_fetch on its URL before answering from it.
+`;
+}
+
+/** "a", "a and b", "a, b and c". */
+function series(items: string[]): string {
+	return items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
+}
+
+interface KeylessTool {
+	/** The inputs the API takes without a key; the tool lists only these. */
+	fields: readonly string[];
+	/** The tool's description without a key, given the optional inputs it lists. */
+	describe: (optional: string[]) => string;
+}
+
+// Without a key the API answers only /fetch and /search, from a daily allowance per caller address, and takes only
+// some of their fields (https://docs.usestring.ai/get-started/authentication#without-a-key). The server then lists
+// those two tools with just those fields, plus product help, which reads String's public site and never the API.
+// It lists nothing else, so a tool added later stays unlisted without a key until it is named here.
+const KEYLESS_TOOLS = new Map<string, KeylessTool | "as is">([
+	["web_access_fetch", { fields: ["url", "format", "executeJS"], describe: keylessFetchDescription }],
+	[
+		"web_access_search",
+		{ fields: ["query", "language", "dateRange", "sortBy", "safeSearch", "autocorrect", "verbatim"], describe: keylessSearchDescription },
+	],
+	["web_access_product_help", "as is"],
+]);
+
+// keylessConfig narrows a tool's config to what the API serves without a key. The schema is strict, so a call that
+// sets an input needing a key is refused before anything is sent, rather than sent without that input.
+function keylessConfig(name: string, config: { inputSchema: z.ZodRawShape | z.AnyZodObject }, tool: KeylessTool) {
+	const shape: z.ZodRawShape = config.inputSchema instanceof z.ZodObject ? config.inputSchema.shape : config.inputSchema;
+	const inputs: z.ZodRawShape = Object.fromEntries(Object.entries(shape).filter(([field]) => tool.fields.includes(field)));
+	const listed = Object.keys(inputs);
+	return {
+		...config,
+		description: tool.describe(listed.filter((field) => field !== "url" && field !== "query")),
+		inputSchema: z
+			.object(inputs)
+			.strict(`Without a key, ${name} takes only ${series(listed)}. Set STRING_API_KEY to a String API key for the other inputs.`),
+	};
+}
+
+// Every registration below goes through here when there is no key, so the tools listed are exactly the ones that work.
+if (!API_KEY) {
+	const registerTool = server.registerTool.bind(server);
+	server.registerTool = ((name: string, config: Parameters<typeof registerTool>[1], callback: Parameters<typeof registerTool>[2]) => {
+		const keyless = KEYLESS_TOOLS.get(name);
+		if (keyless === undefined) {
+			const tool = registerTool(name, config, callback);
+			tool.remove();
+			return tool;
+		}
+		return registerTool(name, keyless === "as is" ? config : keylessConfig(name, config, keyless), callback);
+	}) as typeof server.registerTool;
+}
 
 const accountBalanceSchema = z.object({
 	currency: z.literal("USD"),
@@ -819,6 +958,157 @@ Fetch a caller-specified HTTP(S) URL and get clean, LLM-ready Markdown back. If 
 					},
 				],
 			};
+		}
+	},
+);
+
+// The most steps the API runs in one sequence, and the longest any one wait may last.
+const INTERACT_MAX_ACTIONS = 50;
+const INTERACT_MAX_WAIT_MS = 30_000;
+
+// One browser action, flattened from the API's union into one object whose fields say which step type they belong to:
+// MCP clients render a oneOf unevenly. The API checks the real union and refuses a field the step's type does not take.
+// There is no screenshot step: the image would come back as base64 text, too large for a model's context and of no use
+// to it as text.
+const browserActionSchema = z
+	.object({
+		type: z
+			.enum(["wait", "click", "write", "press", "scroll", "navigate", "hover", "selectOption"])
+			.describe(
+				"What the step does: wait (for a selector to appear, or for a fixed time), click, write (type text into the focused element), press (a key), scroll, navigate (to another URL in the same session, keeping its cookies), hover, or selectOption.",
+			),
+		selector: z
+			.string()
+			.optional()
+			.describe("CSS selector. Required for click, hover and selectOption; on wait it waits for the element to appear; on scroll it scrolls that element instead of the page."),
+		milliseconds: z
+			.number()
+			.int()
+			.min(0)
+			.max(INTERACT_MAX_WAIT_MS)
+			.optional()
+			.describe("wait: pause this many milliseconds. Prefer waiting on a selector."),
+		timeout: z
+			.number()
+			.int()
+			.min(0)
+			.max(INTERACT_MAX_WAIT_MS)
+			.optional()
+			.describe("wait with a selector: give up after this many milliseconds."),
+		all: z.boolean().optional().describe("click: click every element matching the selector instead of the first."),
+		text: z.string().optional().describe("write: the text to type into the focused element."),
+		key: z.string().optional().describe("press: the key to press, such as Enter or Tab, or a combination such as Control+A."),
+		direction: z.enum(["up", "down", "left", "right"]).optional().describe("scroll: which way to scroll."),
+		amount: z.number().int().min(1).optional().describe("scroll: how far, in pixels."),
+		url: z.string().optional().describe("navigate: the URL to go to, carrying the session's cookies and state."),
+		value: z
+			.union([z.string(), z.array(z.string())])
+			.optional()
+			.describe("selectOption: the option value to select, or an array of them for a multi-select."),
+	})
+	.strict();
+
+const interactOutputSchema = z.object({
+	statusCode: z.number().int().describe("The HTTP status of the page the session ended on."),
+	headers: z.record(z.string(), z.array(z.string())).describe("That page's response headers, each name to its values."),
+	body: z
+		.string()
+		.describe("The page as the last step left it, or as it stood when a step failed: Markdown with format markdown, its HTML with json."),
+	finalUrl: z.string().optional().describe("The address the session ended on, after any navigation the steps caused."),
+	error: z
+		.string()
+		.optional()
+		.describe("Set when a step failed, or when url itself did not load. The call still succeeds, and body holds the page as it stood then."),
+	failedActionIndex: z.number().int().optional().describe("0-based index into actions of the step that failed."),
+});
+
+interface BrowserActionsResponse {
+	statusCode?: number;
+	headers?: Record<string, unknown>;
+	data?: string;
+	finalUrl?: string;
+	error?: string;
+	failedActionIndex?: number | null;
+}
+
+server.registerTool(
+	"web_access_interact",
+	{
+		title: "Interact with a web page",
+		// Actions can submit forms and change data on the destination.
+		annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true, idempotentHint: false },
+		description: `
+Interact with a caller-specified page — click, type, scroll, wait — then read it. Use this tool only when the content you need appears after that interaction; for a plain read, use web_access_fetch.
+
+The \`actions\` run in order in a real browser session that opens on \`url\`, and the page comes back as it stands after the last one: a site's own search box filled in and submitted, a sort or filter control chosen, a "load more" button, a tab, a cookie banner, rows that render only once scrolled into view.
+\`\`\`json
+{ "url": "https://example.com", "actions": [
+  { "type": "click", "selector": "input[name=q]" },
+  { "type": "write", "text": "standing desk" },
+  { "type": "press", "key": "Enter" },
+  { "type": "wait", "selector": ".results .item", "timeout": 20000 }
+] }
+\`\`\`
+The input schema describes each step's fields. Wait on a selector rather than for a fixed time, click a field before \`write\` types into it, and never begin with a \`navigate\` to \`url\` itself.
+
+**Returns:** \`body\`, the final page (Markdown by default, its HTML with \`format: "json"\`), with \`finalUrl\`, \`statusCode\` and \`headers\`. If a step fails, the call still succeeds: \`error\` and \`failedActionIndex\` (0-based) name the step, and \`body\` holds the page as it stood then, so read it before fixing that step's selector. With \`error\` and no \`failedActionIndex\`, \`url\` itself did not load and no step ran.
+
+A call holds a browser session for tens of seconds and is billed at the browser rate. Actions can submit forms and change data on the destination, so treat every call as potentially destructive. A browser session is always a GET: it cannot send a POST, PUT or PATCH with a body.
+
+Requests must comply with destination policy, robots directives, rate limits, and access controls.
+`,
+		inputSchema: {
+			url: z.string().url().describe("The page the browser session opens before the first step, as its full web address."),
+			actions: z
+				.array(browserActionSchema)
+				.min(1)
+				.max(INTERACT_MAX_ACTIONS)
+				.describe(`The steps to run, in order, before the page is read: 1 to ${INTERACT_MAX_ACTIONS}.`),
+			format: z
+				.enum(["markdown", "json"])
+				.default("markdown")
+				.describe(
+					"How the final page comes back in body: markdown, the page as clean, LLM-ready text, which suits most reads; or json, the page's HTML as the browser left it.",
+				),
+			countryCode: z
+				.string()
+				.length(2)
+				.optional()
+				.describe("ISO 3166-1 alpha-2 country code, e.g. 'US': get the page as it is served in that country."),
+		},
+		outputSchema: interactOutputSchema,
+	},
+	async ({ url, actions, format, countryCode }) => {
+		try {
+			// Without solveCaptcha the API attempts a challenge, as it must: it refuses false alongside actions. An
+			// action sequence always answers in its JSON envelope, so format picks only how the final page reads.
+			const data = await apiRequestJson<BrowserActionsResponse>("/fetch", {
+				body: { url, actions, format, ...(countryCode ? { countryCode } : {}) },
+			});
+			const output: z.infer<typeof interactOutputSchema> = {
+				statusCode: data.statusCode ?? 0,
+				// The API sends a header's values as a string or a list of them; the output always lists them.
+				headers: Object.fromEntries(
+					Object.entries(data.headers ?? {}).map(([name, value]) => [name, Array.isArray(value) ? value.map(String) : [String(value)]]),
+				),
+				body: data.data ?? "",
+				...(data.finalUrl ? { finalUrl: data.finalUrl } : {}),
+				...(data.error ? { error: data.error } : {}),
+				...(typeof data.failedActionIndex === "number" ? { failedActionIndex: data.failedActionIndex } : {}),
+			};
+			const summary = output.error
+				? `${output.failedActionIndex === undefined ? "the sequence" : `action #${output.failedActionIndex}`} failed: ${output.error} (${output.body.length} characters of the page captured)`
+				: `${actions.length} actions ran, HTTP ${output.statusCode}, ${output.body.length} characters`;
+			return {
+				content: [
+					{ type: "text" as const, text: summary },
+					{ type: "text" as const, text: JSON.stringify(output) },
+				],
+				structuredContent: output,
+			};
+		} catch (err) {
+			const message = err instanceof Error ? err.message : String(err);
+			return { isError: true, content: [{ type: "text" as const, text: `Interaction with ${url} failed: ${message}` }] };
 		}
 	},
 );

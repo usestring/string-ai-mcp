@@ -100,9 +100,10 @@ The tools you get depend on where you connect:
 | Server | Tools |
 | --- | --- |
 | `https://mcp.usestring.ai` with no key | `web_access_fetch`, `web_access_search` and `web_access_product_help` |
+| The npm package, run locally with no key | The same three, within the same daily allowance; see [Without a key](#without-a-key) |
 | `https://mcp.usestring.ai?login`, or `https://mcp.usestring.ai` with an API key | Those three, plus `web_access_request`, `web_access_interact`, `web_access_sitemap_quote`, `web_access_sitemap_start`, `web_access_sitemap_status` and `web_access_balance` |
 | `https://mcp.usestring.ai/integration` | All of the above, plus `web_access_integrations` and `web_access_integration_run` |
-| The npm package, run locally | `web_access_fetch`, `web_access_search`, `web_access_product_help`, `web_access_balance`, `web_access_sitemap_quote`, `web_access_sitemap_start`, `web_access_sitemap_status`, the deprecated `web_access_sitemap` and `web_access_report` |
+| The npm package, run locally | `web_access_fetch`, `web_access_interact`, `web_access_search`, `web_access_product_help`, `web_access_balance`, `web_access_sitemap_quote`, `web_access_sitemap_start`, `web_access_sitemap_status`, the deprecated `web_access_sitemap` and `web_access_report` |
 
 `web_access_search`, `web_access_product_help`, `web_access_balance`, `web_access_sitemap_status`
 and `web_access_integrations` are read-only. So is `web_access_fetch` on the hosted server, where
@@ -152,6 +153,15 @@ nothing is crawled or billed until the quote is explicitly approved.
 | `cancel`  | Stop a non-terminal job; already-fetched pages stay billed and readable.                            |
 | `list`    | The account's recent crawl jobs (`limit` ≤ 100 default 20, `offset`).                               |
 
+### `web_access_interact` — browser actions
+
+The npm package also provides `web_access_interact`, as the hosted server does. It opens `url` in a real browser
+session, runs `actions` in order (1 to 50 steps of `wait`, `click`, `write`, `press`, `scroll`, `navigate`, `hover`
+or `selectOption`), and returns the page as it stands after the last one: Markdown by default, its HTML with
+`format: "json"`. A failed step still returns the page, with `error` and `failedActionIndex` naming the step. Its
+annotations say a call can change data on the destination, so a client that follows them asks before each one. A call
+is billed as a browser session; see [Browser actions](https://docs.usestring.ai/fetch/browser-actions).
+
 ### `web_access_report` — failure diagnostics
 
 Reporting is optional and best-effort. Continue useful recovery first. If reporting remains useful
@@ -167,13 +177,30 @@ If reporting is unavailable, unauthorized, rate-limited, or fails, stop reportin
 
 ## Run it locally
 
-The npm package runs the server on your own machine over stdio. It needs a String API key.
+The npm package runs the server on your own machine over stdio. With a String API key, it lists the tools
+the table above gives for the npm package. Without one, it lists `web_access_fetch`, `web_access_search` and
+`web_access_product_help`; see [Without a key](#without-a-key).
 
 ### Run with npx
 
 ```bash
 env STRING_API_KEY=your-key npx @usestring/mcp
 ```
+
+Leave out `STRING_API_KEY` to try it without a key.
+
+### Without a key
+
+With no `STRING_API_KEY`, fetch and search call the Web Access API with no `Authorization` header, so they run
+within the API's [allowance without a key](https://docs.usestring.ai/get-started/authentication#without-a-key): a
+daily allowance per IP address that resets at 00:00 UTC. They take only the inputs that allowance accepts, and list
+only those: fetch takes `url`, `format` and `executeJS`, and search takes `query` and a few filters such as
+`dateRange` and `sortBy`. Any other input is refused before anything is sent. Product help reads String's public site
+and needs no key at all.
+
+When the allowance runs out, or the API is not serving requests without a key, the tool's error says so and where to
+sign up. Set `STRING_API_KEY` in the server's environment for the other tools, the other inputs and your account's own
+limits.
 
 ### Install globally
 
@@ -196,7 +223,7 @@ STRING_API_KEY=your-key node build/index.js
 
 | Variable             | Required | Description                       |
 | -------------------- | -------- | --------------------------------- |
-| `STRING_API_KEY`     | **Yes**  | Your String API key, from [String settings](https://portal.usestring.ai/settings). Read from 1.4.1 on. `STRING_AI_API_KEY`, the only name earlier releases read, still works, and wins when both are set. |
+| `STRING_API_KEY`     | No       | Your String API key, from [String settings](https://portal.usestring.ai/settings). Without it, only fetch, search and product help are listed; see [Without a key](#without-a-key). Read from 1.4.1 on. `STRING_AI_API_KEY`, the only name earlier releases read, still works, and wins when both are set. |
 
 ## Client Configuration
 
@@ -306,8 +333,8 @@ tool from the UI.
 2. When the LLM decides it needs web content, it invokes `web_access_fetch`,
    `web_access_search`, or the `web_access_sitemap_*` tools. Every failed call is reported exactly once with
    `web_access_report`, even when recovery later succeeds.
-3. This server forwards the request to String AI's Web Access API (using your API key from
-   the environment) and returns the result to the LLM.
+3. This server forwards the request to String AI's Web Access API (with your API key from
+   the environment, or without one within the free allowance) and returns the result to the LLM.
 
 ## About String AI
 
