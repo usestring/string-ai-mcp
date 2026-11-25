@@ -103,7 +103,7 @@ The tools you get depend on where you connect:
 | The npm package, run locally with no key | The same three, within the same daily allowance; see [Without a key](#without-a-key) |
 | `https://mcp.usestring.ai?login`, or `https://mcp.usestring.ai` with an API key | Those three, plus `web_access_request`, `web_access_interact`, `web_access_sitemap_quote`, `web_access_sitemap_start`, `web_access_sitemap_status` and `web_access_balance` |
 | `https://mcp.usestring.ai/integration` | All of the above, plus `web_access_integrations` and `web_access_integration_run` |
-| The npm package, run locally | `web_access_fetch`, `web_access_search`, `web_access_product_help`, `web_access_balance`, `web_access_sitemap_quote`, `web_access_sitemap_start`, `web_access_sitemap_status`, the deprecated `web_access_sitemap` and `web_access_report` |
+| The npm package, run locally | `web_access_fetch`, `web_access_interact`, `web_access_search`, `web_access_product_help`, `web_access_balance`, `web_access_sitemap_quote`, `web_access_sitemap_start`, `web_access_sitemap_status`, the deprecated `web_access_sitemap` and `web_access_report` |
 
 `web_access_search`, `web_access_product_help`, `web_access_balance`, `web_access_sitemap_status`
 and `web_access_integrations` are read-only. So is `web_access_fetch` on the hosted server, where
@@ -150,6 +150,15 @@ nothing is crawled or billed until the quote is explicitly approved.
 | `results` | Paginated discovered URLs (`limit` ≤ 5000 default 1000, `offset`). Durable after completion; per-URL `discoveredUrls` is only present for ~1h. |
 | `cancel`  | Stop a non-terminal job; already-fetched pages stay billed and readable.                            |
 | `list`    | The account's recent crawl jobs (`limit` ≤ 100 default 20, `offset`).                               |
+
+### `web_access_interact` — browser actions
+
+The npm package also provides `web_access_interact`, as the hosted server does. It opens `url` in a real browser
+session, runs `actions` in order (1 to 50 steps of `wait`, `click`, `write`, `press`, `scroll`, `navigate`, `hover`
+or `selectOption`), and returns the page as it stands after the last one: Markdown by default, its HTML with
+`format: "json"`. A failed step still returns the page, with `error` and `failedActionIndex` naming the step. Its
+annotations say a call can change data on the destination, so a client that follows them asks before each one. A call
+is billed as a browser session; see [Browser actions](https://docs.usestring.ai/fetch/browser-actions).
 
 ### `web_access_report` — failure diagnostics
 
