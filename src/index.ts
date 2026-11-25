@@ -534,12 +534,57 @@ function formatPlace(p: SearchPlace): string {
 
 const listOf = <T>(value: unknown): T[] => (value as T[] | undefined) ?? [];
 
+/** A page Google AI Mode cites. url is absent when the citation could not be resolved. */
+interface AIModeSource {
+	title?: string;
+	url?: string;
+	snippet?: string;
+	source?: string;
+}
+
+/**
+ * Google AI Mode's answer, the whole of an aiMode response. Every field but text and sources is
+ * absent when the answer has none; blocks carries the structure markdown already shows.
+ */
+interface AIModeAnswer {
+	text: string;
+	markdown?: string;
+	sources?: AIModeSource[];
+	products?: unknown[];
+	places?: unknown[];
+	videos?: unknown[];
+}
+
+/** Renders an AI Mode answer as Markdown, then its cited sources, then any products, places and videos it showed, as JSON. */
+function formatAIMode(answer: AIModeAnswer): string {
+	const sources = listOf<AIModeSource>(answer.sources).map((s, i) =>
+		searchEntry(i + 1, s.title ?? s.source ?? "(untitled)", [
+			s.url ?? "(no link: the citation could not be resolved)",
+			s.snippet ?? "",
+			s.title !== undefined && s.source !== undefined ? `from ${s.source}` : "",
+		]),
+	);
+	const shown: Record<string, unknown> = {};
+	for (const name of ["products", "places", "videos"] as const) {
+		if (listOf(answer[name]).length > 0) shown[name] = answer[name];
+	}
+	const parts = [
+		answer.markdown || answer.text || "AI Mode answered with no text.",
+		sources.length > 0 ? `Sources:\n${sources.join("\n\n")}` : "Sources: none cited.",
+	];
+	if (Object.keys(shown).length > 0) {
+		parts.push(`Also in the answer (${Object.keys(shown).join(", ")}):\n${JSON.stringify(shown, null, 2)}`);
+	}
+	return parts.join("\n\n");
+}
+
 /**
  * Renders the answer as numbered lines and appends every surface the page carried, as JSON. The
  * images, shopping and places tabs answer in their own list rather than results, so that list
- * becomes the numbered lines and leaves the surfaces block.
+ * becomes the numbered lines and leaves the surfaces block. An AI Mode answer is the whole response.
  */
 function formatSearch(data: SearchResponse, searchType: SearchType = "web"): string {
+	if (data.aiMode !== undefined) return formatAIMode(data.aiMode as AIModeAnswer);
 	const [answer, entries]: [string | undefined, string[]] =
 		searchType === "images"
 			? ["images", listOf<SearchImage>(data.images).map(formatImage)]
@@ -1139,6 +1184,22 @@ Search the public web for a query and get ranked organic results back, plus what
 **Best for:** a request that names no URL, or one that needs sources found before anything is read.
 **Not for:** a URL you already have — use web_access_fetch instead.
 
+**Optional targeting fields:** \`country\` — the ISO 3166-1 alpha-2 code the search runs from, such as \`GB\` (default \`US\`); \`language\` — the results language, a tag such as \`en\` or \`pt-br\`.
+\`\`\`json
+{ "query": "plumbers", "country": "GB", "language": "en" }
+\`\`\`
+To search from a place, send \`location\`, a place name such as \`London\` or \`Austin,Texas,United States\` (1 to 200 characters), or \`coordinates\`, \`{ latitude, longitude, radius }\` with radius in meters (default 5000). The search is sent from that place's country and Google leans results toward it, most strongly for queries like \`plumbers near me\`; it is not exact city targeting, and a bare query such as \`coffee shops\` may still cover a wider area. A name that cannot be placed is rejected, so send \`coordinates\` instead; if both are sent, \`coordinates\` win.
+\`\`\`json
+{ "query": "plumbers near me", "location": "Austin,Texas,United States" }
+\`\`\`
+
+**Optional request field:** \`aiMode: true\` — ask Google AI Mode instead of the results page. The response is one generated answer with the pages it cites and any products, places and videos it shows, and no ranked results. Billed as one search. \`country\`, \`language\`, \`location\` and \`coordinates\` apply (with a place, the answer is given for it and stays in \`language\`); \`searchCount\`, \`page\`, \`dateRange\`, \`sortBy\`, \`format: "raw"\`, \`searchType\`, the filters and \`aiOverview\` do not, and are rejected. If an AI Mode answer isn't available for the query, the call fails instead of returning a results page; retry, or search without it.
+\`\`\`json
+{ "query": "best bakeries nearby", "aiMode": true, "coordinates": { "latitude": 48.8566, "longitude": 2.3522 } }
+\`\`\`
+
+**Optional request field:** \`aiOverview: true\` — fill the AI Overview Google streams in after the results page loads. It makes a second, sequential fetch, which adds a few seconds and costs 2x a normal search. Off by default: without it, an overview already on the page is still returned, and a streamed one comes back with \`declined: true\`. Web tab only; not with \`aiMode\`.
+
 **Optional request field:** \`searchCount\` — how many organic results you want, an integer from 1 to ${SEARCH_COUNT_MAX} (above ${SEARCH_COUNT_MAX} is rejected). Google is paged, up to 36 pages, until that many are in hand; each page is billed as one search. If Google has fewer results than that, you get every result it has, with \`paging.stoppedBy: "end_of_results"\`. Omit it for one page, about 10 results. Not with \`format: "raw"\`, which returns one page per call.
 
 **Usage Example:**
@@ -1154,7 +1215,7 @@ Search the public web for a query and get ranked organic results back, plus what
 - \`images\` answers images, about 100 a page, each with its title, the page it is on, the source, the image file and its size. It has 3 pages; \`searchCount\` up to ${SEARCH_COUNT_MAX} collects across them, usually about 270 images.
 - \`shopping\` answers products, the one page of about 55 product cards: title, productId, price and original price as shown, merchant, delivery, returns, rating, reviews. A card has no URL. Google does not page this tab, so \`page\` must be 1.
 - \`places\` answers places, 20 businesses a page, paged like the web up to page ${SEARCH_TYPE_PAGE_MAX.places}.
-\`dateRange\`, \`sortBy\` and \`verbatim\` apply to web, videos and forums only; \`format: "raw"\` to web only.
+\`dateRange\`, \`sortBy\` and \`verbatim\` apply to web, videos and forums only; \`format: "raw"\` and \`aiOverview\` to web only.
 \`\`\`json
 { "query": "eames lounge chair", "searchType": "images", "searchCount": 150 }
 \`\`\`
@@ -1185,10 +1246,54 @@ Search the public web for a query and get ranked organic results back, plus what
 - \`ads\`, \`videos\`, \`shortVideos\`, \`discussions\`, \`images\`, \`sitelinks\` — each entry with position, title and url.
 - \`paging\` — { pages, complete, stoppedBy }, only when searchCount was sent. pages is how many results pages answered, each billed as one search. stoppedBy is why paging stopped: search_count (the count was reached), end_of_results (Google had no more, or the first page carried no organic results), page_cap (the 36-page limit; Google may have more), page_failed (a later page could not be fetched) or deadline (the time budget ran out). complete is false only for page_failed and deadline, and results then holds what was collected. Surfaces describe the first page only; positions run on across pages.
 
+With \`aiMode: true\`, the answer comes first as Markdown (headings, lists, tables and code kept), then its cited sources as numbered lines with title, URL (absent when a citation could not be resolved), the passage quoted and the site's name, then, when the answer shows them, \`products\` (title, price and oldPrice as displayed, merchant, moreSellers, rating, reviews, thumbnail, productId, url), \`places\` (name, category, rating, reviews, priceLevel, status, address, description, url) and \`videos\` (title, url, channel, duration, thumbnail) as JSON. Fetch the sources to verify a claim.
+
 A snippet is not the page, and an overview is not a source. To read a result, call web_access_fetch on its URL before answering from it.
 `,
 		inputSchema: {
 			query: z.string().describe("The search query. Be specific and descriptive for best results."),
+			country: z
+				.string()
+				.regex(/^[A-Za-z]{2}$/, "must be a two-letter ISO 3166-1 alpha-2 code")
+				.optional()
+				.describe("The country the search runs from, as its ISO 3166-1 alpha-2 code, such as 'GB'. Omitted, the search runs from the US."),
+			language: z
+				.string()
+				.regex(/^[A-Za-z]{2}(-[A-Za-z]{2})?$/, "must be a language tag such as en or pt-br")
+				.optional()
+				.describe("The language of the results, as a language tag such as 'en' or 'pt-br'."),
+			location: z
+				.string()
+				.trim()
+				.min(1)
+				.max(200)
+				.optional()
+				.describe(
+					"A place to search from, by name, such as 'London' or 'Austin,Texas,United States'. The search runs from that place's country and Google leans results toward the place, most strongly for 'near me' queries, though a bare query may still cover a wider area; with aiMode the answer is given for that place. A name that cannot be placed is rejected, so send coordinates instead; coordinates win when both are sent.",
+				),
+			coordinates: z
+				.object({
+					latitude: z.number().min(-90).max(90).describe("The point's latitude, in decimal degrees."),
+					longitude: z.number().min(-180).max(180).describe("The point's longitude, in decimal degrees."),
+					radius: z.number().int().min(1).max(1_000_000).optional().describe("How precise the point is, in meters. Omit for 5000."),
+				})
+				.strict()
+				.optional()
+				.describe(
+					"A point to search from, sent from the country it lies in. Google results are biased toward it, most strongly for 'near me' queries; with aiMode the answer is given for it. Wins over location when both are sent.",
+				),
+			aiMode: z
+				.boolean()
+				.optional()
+				.describe(
+					"Answer from Google AI Mode instead of the results page: one generated answer with its cited sources and any products, places and videos it shows, and no results. Billed as one search. Takes country, language, location and coordinates, and none of the results-page fields.",
+				),
+			aiOverview: z
+				.boolean()
+				.optional()
+				.describe(
+					"Fill the AI Overview Google streams in after the results page loads, with a second, sequential fetch that adds a few seconds and costs 2x a normal search. Without it, an overview already on the page is still returned and a streamed one comes back as declined. Web tab only; not with aiMode.",
+				),
 			searchCount: z
 				.number()
 				.int()
@@ -1262,10 +1367,43 @@ A snippet is not the page, and an overview is not a source. To read a result, ca
 				.describe("Google only: true matches the query's words exactly, without synonyms or stemming. Web, videos and forums only."),
 		},
 	},
-	async ({ query, searchCount, page, dateRange, sortBy, format, searchType, safeSearch, includeOmittedResults, autocorrect, restrictCountry, verbatim }) => {
+	async ({
+		query,
+		country,
+		language,
+		location,
+		coordinates,
+		aiMode,
+		aiOverview,
+		searchCount,
+		page,
+		dateRange,
+		sortBy,
+		format,
+		searchType,
+		safeSearch,
+		includeOmittedResults,
+		autocorrect,
+		restrictCountry,
+		verbatim,
+	}) => {
 		try {
 			const tab = searchType ?? "web";
 			// The API answers the same 400s.
+			if (aiMode) {
+				// AI Mode is its own engine: it has no results page to count, page, filter or stream an overview into.
+				if (searchCount !== undefined) {
+					throw new Error("searchCount does not apply with aiMode, which answers with one generated answer rather than ranked results");
+				}
+				if (aiOverview === true) {
+					throw new Error("aiOverview does not apply with aiMode, which answers from Google AI Mode rather than the results page");
+				}
+				const resultsPageOnly = { page, dateRange, sortBy, searchType, safeSearch, includeOmittedResults, autocorrect, restrictCountry, verbatim };
+				for (const [name, value] of Object.entries(resultsPageOnly)) {
+					if (value !== undefined) throw new Error(`${name} does not apply with aiMode; it applies only to the Google results page`);
+				}
+				if (format === "raw") throw new Error('format "raw" does not apply with aiMode; it applies only to the Google results page');
+			}
 			if (format === "raw" && searchCount !== undefined) {
 				throw new Error('searchCount does not apply to format "raw"; raw answers one Google results page per request, so use page');
 			}
@@ -1275,6 +1413,7 @@ A snippet is not the page, and an overview is not a source. To read a result, ca
 				[sortBy !== undefined, "sortBy", dated, SEARCH_DATED_TYPES.join(", ")],
 				[verbatim === true, "verbatim", dated, SEARCH_DATED_TYPES.join(", ")],
 				[format === "raw", "format raw", tab === "web", "web"],
+				[aiOverview === true, "aiOverview", tab === "web", "web"],
 			] as const) {
 				if (set && !applies) throw new Error(`${name} applies only to searchType ${where}, got "${tab}"`);
 			}
@@ -1293,6 +1432,12 @@ A snippet is not the page, and an overview is not a source. To read a result, ca
 			const res = await apiFetch("/search", {
 				body: {
 					query,
+					...(aiMode ? { engine: "google_ai_mode" } : {}),
+					...(country !== undefined ? { country: country.toUpperCase() } : {}),
+					...(language !== undefined ? { language } : {}),
+					...(location !== undefined ? { location } : {}),
+					...(coordinates !== undefined ? { coordinates } : {}),
+					...(aiOverview !== undefined ? { aiOverview } : {}),
 					...(searchCount !== undefined ? { searchCount } : {}),
 					...(page !== undefined ? { page } : {}),
 					...(dateRange !== undefined ? { dateRange } : {}),
