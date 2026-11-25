@@ -912,6 +912,157 @@ Fetch a caller-specified HTTP(S) URL and get clean, LLM-ready Markdown back. If 
 	},
 );
 
+// The most steps the API runs in one sequence, and the longest any one wait may last.
+const INTERACT_MAX_ACTIONS = 50;
+const INTERACT_MAX_WAIT_MS = 30_000;
+
+// One browser action, flattened from the API's union into one object whose fields say which step type they belong to:
+// MCP clients render a oneOf unevenly. The API checks the real union and refuses a field the step's type does not take.
+// There is no screenshot step: the image would come back as base64 text, too large for a model's context and of no use
+// to it as text.
+const browserActionSchema = z
+	.object({
+		type: z
+			.enum(["wait", "click", "write", "press", "scroll", "navigate", "hover", "selectOption"])
+			.describe(
+				"What the step does: wait (for a selector to appear, or for a fixed time), click, write (type text into the focused element), press (a key), scroll, navigate (to another URL in the same session, keeping its cookies), hover, or selectOption.",
+			),
+		selector: z
+			.string()
+			.optional()
+			.describe("CSS selector. Required for click, hover and selectOption; on wait it waits for the element to appear; on scroll it scrolls that element instead of the page."),
+		milliseconds: z
+			.number()
+			.int()
+			.min(0)
+			.max(INTERACT_MAX_WAIT_MS)
+			.optional()
+			.describe("wait: pause this many milliseconds. Prefer waiting on a selector."),
+		timeout: z
+			.number()
+			.int()
+			.min(0)
+			.max(INTERACT_MAX_WAIT_MS)
+			.optional()
+			.describe("wait with a selector: give up after this many milliseconds."),
+		all: z.boolean().optional().describe("click: click every element matching the selector instead of the first."),
+		text: z.string().optional().describe("write: the text to type into the focused element."),
+		key: z.string().optional().describe("press: the key to press, such as Enter or Tab, or a combination such as Control+A."),
+		direction: z.enum(["up", "down", "left", "right"]).optional().describe("scroll: which way to scroll."),
+		amount: z.number().int().min(1).optional().describe("scroll: how far, in pixels."),
+		url: z.string().optional().describe("navigate: the URL to go to, carrying the session's cookies and state."),
+		value: z
+			.union([z.string(), z.array(z.string())])
+			.optional()
+			.describe("selectOption: the option value to select, or an array of them for a multi-select."),
+	})
+	.strict();
+
+const interactOutputSchema = z.object({
+	statusCode: z.number().int().describe("The HTTP status of the page the session ended on."),
+	headers: z.record(z.string(), z.array(z.string())).describe("That page's response headers, each name to its values."),
+	body: z
+		.string()
+		.describe("The page as the last step left it, or as it stood when a step failed: Markdown with format markdown, its HTML with json."),
+	finalUrl: z.string().optional().describe("The address the session ended on, after any navigation the steps caused."),
+	error: z
+		.string()
+		.optional()
+		.describe("Set when a step failed, or when url itself did not load. The call still succeeds, and body holds the page as it stood then."),
+	failedActionIndex: z.number().int().optional().describe("0-based index into actions of the step that failed."),
+});
+
+interface BrowserActionsResponse {
+	statusCode?: number;
+	headers?: Record<string, unknown>;
+	data?: string;
+	finalUrl?: string;
+	error?: string;
+	failedActionIndex?: number | null;
+}
+
+server.registerTool(
+	"web_access_interact",
+	{
+		title: "Interact with a web page",
+		// Actions can submit forms and change data on the destination.
+		annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true, idempotentHint: false },
+		description: `
+Interact with a caller-specified page — click, type, scroll, wait — then read it. Use this tool only when the content you need appears after that interaction; for a plain read, use web_access_fetch.
+
+The \`actions\` run in order in a real browser session that opens on \`url\`, and the page comes back as it stands after the last one: a site's own search box filled in and submitted, a sort or filter control chosen, a "load more" button, a tab, a cookie banner, rows that render only once scrolled into view.
+\`\`\`json
+{ "url": "https://example.com", "actions": [
+  { "type": "click", "selector": "input[name=q]" },
+  { "type": "write", "text": "standing desk" },
+  { "type": "press", "key": "Enter" },
+  { "type": "wait", "selector": ".results .item", "timeout": 20000 }
+] }
+\`\`\`
+The input schema describes each step's fields. Wait on a selector rather than for a fixed time, click a field before \`write\` types into it, and never begin with a \`navigate\` to \`url\` itself.
+
+**Returns:** \`body\`, the final page (Markdown by default, its HTML with \`format: "json"\`), with \`finalUrl\`, \`statusCode\` and \`headers\`. If a step fails, the call still succeeds: \`error\` and \`failedActionIndex\` (0-based) name the step, and \`body\` holds the page as it stood then, so read it before fixing that step's selector. With \`error\` and no \`failedActionIndex\`, \`url\` itself did not load and no step ran.
+
+A call holds a browser session for tens of seconds and is billed at the browser rate. Actions can submit forms and change data on the destination, so treat every call as potentially destructive. A browser session is always a GET: it cannot send a POST, PUT or PATCH with a body.
+
+Requests must comply with destination policy, robots directives, rate limits, and access controls.
+`,
+		inputSchema: {
+			url: z.string().url().describe("The page the browser session opens before the first step, as its full web address."),
+			actions: z
+				.array(browserActionSchema)
+				.min(1)
+				.max(INTERACT_MAX_ACTIONS)
+				.describe(`The steps to run, in order, before the page is read: 1 to ${INTERACT_MAX_ACTIONS}.`),
+			format: z
+				.enum(["markdown", "json"])
+				.default("markdown")
+				.describe(
+					"How the final page comes back in body: markdown, the page as clean, LLM-ready text, which suits most reads; or json, the page's HTML as the browser left it.",
+				),
+			countryCode: z
+				.string()
+				.length(2)
+				.optional()
+				.describe("ISO 3166-1 alpha-2 country code, e.g. 'US': get the page as it is served in that country."),
+		},
+		outputSchema: interactOutputSchema,
+	},
+	async ({ url, actions, format, countryCode }) => {
+		try {
+			// Without solveCaptcha the API attempts a challenge, as it must: it refuses false alongside actions. An
+			// action sequence always answers in its JSON envelope, so format picks only how the final page reads.
+			const data = await apiRequestJson<BrowserActionsResponse>("/fetch", {
+				body: { url, actions, format, ...(countryCode ? { countryCode } : {}) },
+			});
+			const output: z.infer<typeof interactOutputSchema> = {
+				statusCode: data.statusCode ?? 0,
+				// The API sends a header's values as a string or a list of them; the output always lists them.
+				headers: Object.fromEntries(
+					Object.entries(data.headers ?? {}).map(([name, value]) => [name, Array.isArray(value) ? value.map(String) : [String(value)]]),
+				),
+				body: data.data ?? "",
+				...(data.finalUrl ? { finalUrl: data.finalUrl } : {}),
+				...(data.error ? { error: data.error } : {}),
+				...(typeof data.failedActionIndex === "number" ? { failedActionIndex: data.failedActionIndex } : {}),
+			};
+			const summary = output.error
+				? `${output.failedActionIndex === undefined ? "the sequence" : `action #${output.failedActionIndex}`} failed: ${output.error} (${output.body.length} characters of the page captured)`
+				: `${actions.length} actions ran, HTTP ${output.statusCode}, ${output.body.length} characters`;
+			return {
+				content: [
+					{ type: "text" as const, text: summary },
+					{ type: "text" as const, text: JSON.stringify(output) },
+				],
+				structuredContent: output,
+			};
+		} catch (err) {
+			const message = err instanceof Error ? err.message : String(err);
+			return { isError: true, content: [{ type: "text" as const, text: `Interaction with ${url} failed: ${message}` }] };
+		}
+	},
+);
+
 server.registerTool(
 	"web_access_search",
 	{
