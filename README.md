@@ -103,7 +103,7 @@ The tools you get depend on where you connect:
 | The npm package, run locally with no key | The same three, within the same daily allowance; see [Without a key](#without-a-key) |
 | `https://mcp.usestring.ai?login`, or `https://mcp.usestring.ai` with an API key | Those three, plus `web_access_request`, `web_access_interact`, `web_access_sitemap_quote`, `web_access_sitemap_start`, `web_access_sitemap_status` and `web_access_balance` |
 | `https://mcp.usestring.ai/integration` | All of the above, plus `web_access_integrations` and `web_access_integration_run` |
-| The npm package, run locally | `web_access_fetch`, `web_access_interact`, `web_access_search`, `web_access_product_help`, `web_access_balance`, `web_access_sitemap_quote`, `web_access_sitemap_start`, `web_access_sitemap_status`, the deprecated `web_access_sitemap` and `web_access_report` |
+| The npm package, run locally | `web_access_fetch`, `web_access_interact`, `web_access_search`, `web_access_product_help`, `web_access_balance`, `web_access_sitemap_quote`, `web_access_sitemap_start`, `web_access_sitemap_status`, `web_access_integrations`, `web_access_integration_run`, the deprecated `web_access_sitemap` and `web_access_report` |
 
 `web_access_search`, `web_access_product_help`, `web_access_balance`, `web_access_sitemap_status`
 and `web_access_integrations` are read-only. So is `web_access_fetch`, which sends only GET requests:
@@ -130,8 +130,7 @@ retry guidance.
 ### `web_access_integrations` and `web_access_integration_run` - site integrations
 
 Site integrations are maintained extractors for specific sites that return typed rows instead of a page.
-The npm package lists these two tools only when `STRING_INTEGRATIONS=1` is set in the server's environment,
-beside `STRING_API_KEY`, as the hosted server lists them only at `https://mcp.usestring.ai/integration`.
+The npm package lists these two tools whenever `STRING_API_KEY` is set.
 
 - `web_access_integrations` reads the public catalog: `list` gives every site and its actions, and `describe`
   gives one site's input and output schemas, examples, request band and billing. It is free.
@@ -234,9 +233,6 @@ STRING_API_KEY=your-key node build/index.js
 | Variable             | Required | Description                       |
 | -------------------- | -------- | --------------------------------- |
 | `STRING_API_KEY`     | No       | Your String API key, from [String settings](https://portal.usestring.ai/settings). Without it, only fetch, search and product help are listed; see [Without a key](#without-a-key). Read from 1.4.1 on. `STRING_AI_API_KEY`, the only name earlier releases read, still works, and wins when both are set. |
-
-`STRING_INTEGRATIONS`, optional: set it to `1` to also list `web_access_integrations` and
-`web_access_integration_run`; see [site integrations](#web_access_integrations-and-web_access_integration_run---site-integrations).
 
 ## Client Configuration
 

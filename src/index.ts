@@ -1973,10 +1973,8 @@ Requires \`jobId\`. A 404 means the job doesn't exist or belongs to another acco
 );
 
 // The site integration tools: maintained extractors that turn a site's records into typed rows
-// (https://docs.usestring.ai/sites/making-a-request). The hosted server lists them only at /integration, keeping them
-// off its root endpoint, so this server lists them only when STRING_INTEGRATIONS is 1. Listing and describing read
-// the public catalog and cost nothing; a run is billed to the key.
-const INTEGRATIONS_ENABLED = ["1", "true"].includes((process.env.STRING_INTEGRATIONS ?? "").trim().toLowerCase());
+// (https://docs.usestring.ai/sites/making-a-request). Listing and describing read the public catalog and cost nothing;
+// a run is billed to the key.
 
 /** One action of a site, as the manifest describes it. */
 interface IntegrationActionManifest {
@@ -2036,14 +2034,13 @@ function integrationRunError(err: unknown): unknown {
 	return new Error(text);
 }
 
-if (INTEGRATIONS_ENABLED) {
-	server.registerTool(
-		"web_access_integrations",
-		{
-			title: "List site integrations",
-			// Reads String's published catalog: it fetches nothing from a site and bills nothing.
-			annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true },
-			description: `
+server.registerTool(
+	"web_access_integrations",
+	{
+		title: "List site integrations",
+		// Reads String's published catalog: it fetches nothing from a site and bills nothing.
+		annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true },
+		description: `
 Discover maintained, structured extractors for specific websites. Each integration turns a site's pages or API into typed rows, such as a business record, a page of search results or a set of reviews, under a published input and output schema.
 
 Before fetching pages on a site to pull records out of them, call \`list\`. If the site has an integration with an action for what you need, call \`describe\` for that site, then run the action with \`web_access_integration_run\` to get typed rows rather than parsing pages.
@@ -2062,70 +2059,70 @@ Read-only and free: neither action fetches from the site or bills anything. Site
 
 **Returns:** a one-line summary, then JSON: \`sites\` for \`list\`; for \`describe\`, the site's \`site\`, \`title\`, \`description\`, \`version\`, \`hosts\` and \`actions\`.
 `,
-			inputSchema: {
-				action: z
-					.enum(["list", "describe"])
-					.describe(
-						"What to read: list, every site that has an integration, with each action's request band and billing but no schemas; or describe, one site in full, with each action's input and output schemas and examples.",
-					),
-				site: z
-					.string()
-					.min(1)
-					.optional()
-					.describe("The site describe answers for, by the name list gives it, such as yelp. list takes no site."),
-			},
+		inputSchema: {
+			action: z
+				.enum(["list", "describe"])
+				.describe(
+					"What to read: list, every site that has an integration, with each action's request band and billing but no schemas; or describe, one site in full, with each action's input and output schemas and examples.",
+				),
+			site: z
+				.string()
+				.min(1)
+				.optional()
+				.describe("The site describe answers for, by the name list gives it, such as yelp. list takes no site."),
 		},
-		async ({ action, site }) => {
-			try {
-				if (action === "list") {
-					const { sites } = await apiRequestJson<IntegrationManifest>("/integrations/manifest.json", { method: "GET" });
-					const summaries = sites.map(({ name, title, description, version, hosts, actions }) => ({
-						name,
-						title,
-						description,
-						version,
-						hosts,
-						actions: actions.map(({ name, description, requests, billing }) => ({ name, description, requests, billing })),
-					}));
-					const names = sites.map((s) => `${s.name} (${s.actions.map((a) => a.name).join(", ")})`);
-					return sitemapResult(`${countOf(sites.length, "integration")}${names.length > 0 ? `: ${names.join("; ")}` : ""}`, { sites: summaries });
-				}
-				if (site === undefined) throw new Error('site is required for action "describe"');
-				let manifest: IntegrationManifest;
-				try {
-					manifest = await apiRequestJson<IntegrationManifest>(`/integrations/${encodeURIComponent(site)}`, { method: "GET" });
-				} catch (err) {
-					if (err instanceof ApiError && err.status === 404) throw noIntegration(site);
-					throw err;
-				}
-				const found = manifest.sites.find((s) => s.name === site);
-				if (found === undefined) throw noIntegration(site);
-				const actions = found.actions.map(({ name, description, input, output, examples, requests, billing }) => ({
+	},
+	async ({ action, site }) => {
+		try {
+			if (action === "list") {
+				const { sites } = await apiRequestJson<IntegrationManifest>("/integrations/manifest.json", { method: "GET" });
+				const summaries = sites.map(({ name, title, description, version, hosts, actions }) => ({
 					name,
+					title,
 					description,
-					input,
-					output,
-					examples: examples ?? [],
-					requests,
-					billing,
+					version,
+					hosts,
+					actions: actions.map(({ name, description, requests, billing }) => ({ name, description, requests, billing })),
 				}));
-				return sitemapResult(
-					`${found.name} ${found.version}: ${countOf(actions.length, "action")} (${actions.map((a) => a.name).join(", ")})`,
-					{ site: found.name, title: found.title, description: found.description, version: found.version, hosts: found.hosts, actions },
-				);
-			} catch (err) {
-				return sitemapToolError("web_access_integrations", err);
+				const names = sites.map((s) => `${s.name} (${s.actions.map((a) => a.name).join(", ")})`);
+				return sitemapResult(`${countOf(sites.length, "integration")}${names.length > 0 ? `: ${names.join("; ")}` : ""}`, { sites: summaries });
 			}
-		},
-	);
+			if (site === undefined) throw new Error('site is required for action "describe"');
+			let manifest: IntegrationManifest;
+			try {
+				manifest = await apiRequestJson<IntegrationManifest>(`/integrations/${encodeURIComponent(site)}`, { method: "GET" });
+			} catch (err) {
+				if (err instanceof ApiError && err.status === 404) throw noIntegration(site);
+				throw err;
+			}
+			const found = manifest.sites.find((s) => s.name === site);
+			if (found === undefined) throw noIntegration(site);
+			const actions = found.actions.map(({ name, description, input, output, examples, requests, billing }) => ({
+				name,
+				description,
+				input,
+				output,
+				examples: examples ?? [],
+				requests,
+				billing,
+			}));
+			return sitemapResult(
+				`${found.name} ${found.version}: ${countOf(actions.length, "action")} (${actions.map((a) => a.name).join(", ")})`,
+				{ site: found.name, title: found.title, description: found.description, version: found.version, hosts: found.hosts, actions },
+			);
+		} catch (err) {
+			return sitemapToolError("web_access_integrations", err);
+		}
+	},
+);
 
-	server.registerTool(
-		"web_access_integration_run",
-		{
-			title: "Run a site integration",
-			// Reads from a site and bills the run; it changes nothing there.
-			annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true, idempotentHint: false },
-			description: `
+server.registerTool(
+	"web_access_integration_run",
+	{
+		title: "Run a site integration",
+		// Reads from a site and bills the run; it changes nothing there.
+		annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true, idempotentHint: false },
+		description: `
 Run one action of a site integration and get typed rows back, billed to the String account of this server's key.
 
 Find the site and action with \`web_access_integrations\` (\`list\`, then \`describe\`), and send \`input\` matching the action's input schema.
@@ -2141,51 +2138,50 @@ Find the site and action with \`web_access_integrations\` (\`list\`, then \`desc
 
 Requests must comply with destination policy, rate limits, and access controls.
 `,
-			inputSchema: {
-				site: z
-					.string()
-					.min(1)
-					.describe("The site whose integration runs, by the name web_access_integrations list gives it, such as yelp."),
-				action: z
-					.string()
-					.min(1)
-					.describe(
-						"Which of the site's actions to run, by the name web_access_integrations gives it, such as business for the yelp site. Each action has its own input schema, request band and billing, which describe reports.",
-					),
-				input: z
-					.record(z.string(), z.unknown())
-					.optional()
-					.describe(
-						"The action's arguments, in the shape of the input schema web_access_integrations describe returns for it, such as the items to read. Leave it out for an action that takes none.",
-					),
-			},
+		inputSchema: {
+			site: z
+				.string()
+				.min(1)
+				.describe("The site whose integration runs, by the name web_access_integrations list gives it, such as yelp."),
+			action: z
+				.string()
+				.min(1)
+				.describe(
+					"Which of the site's actions to run, by the name web_access_integrations gives it, such as business for the yelp site. Each action has its own input schema, request band and billing, which describe reports.",
+				),
+			input: z
+				.record(z.string(), z.unknown())
+				.optional()
+				.describe(
+					"The action's arguments, in the shape of the input schema web_access_integrations describe returns for it, such as the items to read. Leave it out for an action that takes none.",
+				),
 		},
-		async ({ site, action, input }) => {
-			try {
-				const run = await apiRequestJson<IntegrationRunEnvelope>(
-					`/integrations/${encodeURIComponent(site)}/${encodeURIComponent(action)}`,
-					{ body: input ?? {} },
-				);
-				const out = {
-					envelopeVersion: run.envelopeVersion,
-					integration: run.integration,
-					data: run.data ?? [],
-					failures: run.failures ?? [],
-					warnings: run.warnings ?? [],
-					requests: run.requests ?? [],
-					billing: run.billing,
-					...(run.traceId ? { traceId: run.traceId } : {}),
-				};
-				const { site: ran, action: did, version } = run.integration;
-				let summary = `${ran}.${did} ${version}: ${countOf(out.data.length, "row")}, ${countOf(out.failures.length, "failure")}, ${countOf(out.requests.length, "request")}; billed ${run.billing.mode}, ${countOf(run.billing.calls, "call")}`;
-				if (out.warnings.length > 0) summary += `, ${countOf(out.warnings.length, "warning")}`;
-				return sitemapResult(summary, out);
-			} catch (err) {
-				return sitemapToolError("web_access_integration_run", integrationRunError(err));
-			}
-		},
-	);
-}
+	},
+	async ({ site, action, input }) => {
+		try {
+			const run = await apiRequestJson<IntegrationRunEnvelope>(
+				`/integrations/${encodeURIComponent(site)}/${encodeURIComponent(action)}`,
+				{ body: input ?? {} },
+			);
+			const out = {
+				envelopeVersion: run.envelopeVersion,
+				integration: run.integration,
+				data: run.data ?? [],
+				failures: run.failures ?? [],
+				warnings: run.warnings ?? [],
+				requests: run.requests ?? [],
+				billing: run.billing,
+				...(run.traceId ? { traceId: run.traceId } : {}),
+			};
+			const { site: ran, action: did, version } = run.integration;
+			let summary = `${ran}.${did} ${version}: ${countOf(out.data.length, "row")}, ${countOf(out.failures.length, "failure")}, ${countOf(out.requests.length, "request")}; billed ${run.billing.mode}, ${countOf(run.billing.calls, "call")}`;
+			if (out.warnings.length > 0) summary += `, ${countOf(out.warnings.length, "warning")}`;
+			return sitemapResult(summary, out);
+		} catch (err) {
+			return sitemapToolError("web_access_integration_run", integrationRunError(err));
+		}
+	},
+);
 
 const reportableTools = ["web_access_fetch", "web_access_product_help", "web_access_search", "web_access_sitemap"] as const;
 
