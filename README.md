@@ -88,7 +88,7 @@ machine instead, see [Run it locally](#run-it-locally).
 | `web_access_interact`     | Run browser actions on a page (click, type, scroll, wait), then read the page they leave; billed as a browser session |
 | `web_access_product_help` | Ask about String products or services; get one source (two for comparisons), with a shared 4 KiB excerpt budget and source links |
 | `web_access_request`      | Send a POST, PUT or PATCH with a body to a URL                                  |
-| `web_access_search`       | Search the web: ranked results plus the knowledge panel, AI overview, local pack and other surfaces Google rendered; optional `searchCount` (1–300) pages Google; `searchType` searches Google's images, videos, shopping, books, places or forums tab; `safeSearch`, `includeOmittedResults`, `autocorrect`, `restrictCountry` and `verbatim` filter it; `page`, `dateRange` and `sortBy` refine a Google search; `format` is `"structured"` (JSON, the default and recommended) or `"raw"` (the Google results page as HTML, one page per call; `page` only, `searchCount` is rejected with raw) |
+| `web_access_search`       | Search the web: ranked results plus the knowledge panel, AI overview, local pack and other surfaces Google rendered; `country`, `language`, `location` and `coordinates` set where it runs from; `aiMode` asks Google AI Mode for one answer with its sources instead, and `aiOverview` fills a streamed AI Overview at twice the cost; optional `searchCount` (1–300) pages Google; `searchType` searches Google's images, videos, shopping, books, places or forums tab; `safeSearch`, `includeOmittedResults`, `autocorrect`, `restrictCountry` and `verbatim` filter it; `page`, `dateRange` and `sortBy` refine a Google search; `format` is `"structured"` (JSON, the default and recommended) or `"raw"` (the Google results page as HTML, one page per call; `page` only, `searchCount` is rejected with raw) |
 | `web_access_sitemap_quote` | Quote a crawl of one site: estimated pages and cost. Nothing is crawled or billed until the crawl starts |
 | `web_access_sitemap_start` | Start a quoted crawl after the user approves the quote; pages are billed as they are fetched |
 | `web_access_sitemap_status` | Check a crawl's progress, and read the URLs it found once it finishes |
@@ -128,6 +128,17 @@ Balance checks count toward your organization's API rate limit alongside other r
 If you exceed the limit, the API returns `429 Too Many Requests`. See
 [rate limits](https://docs.usestring.ai/api-reference/rate-limits) for plan limits and
 retry guidance.
+
+### `web_access_integrations` and `web_access_integration_run` - site integrations
+
+Site integrations are maintained extractors for specific sites that return typed rows instead of a page.
+The npm package lists these two tools only when `STRING_INTEGRATIONS=1` is set in the server's environment,
+beside `STRING_API_KEY`, as the hosted server lists them only at `https://mcp.usestring.ai/integration`.
+
+- `web_access_integrations` reads the public catalog: `list` gives every site and its actions, and `describe`
+  gives one site's input and output schemas, examples, request band and billing. It is free.
+- `web_access_integration_run` runs one action on an `input` that matches its schema, and is billed to your
+  account by the action's `billing`. See [Making a request](https://docs.usestring.ai/sites/making-a-request).
 
 ### `web_access_sitemap_quote`, `web_access_sitemap_start`, `web_access_sitemap_status`
 
@@ -225,6 +236,9 @@ STRING_API_KEY=your-key node build/index.js
 | Variable             | Required | Description                       |
 | -------------------- | -------- | --------------------------------- |
 | `STRING_API_KEY`     | No       | Your String API key, from [String settings](https://portal.usestring.ai/settings). Without it, only fetch, search and product help are listed; see [Without a key](#without-a-key). Read from 1.4.1 on. `STRING_AI_API_KEY`, the only name earlier releases read, still works, and wins when both are set. |
+
+`STRING_INTEGRATIONS`, optional: set it to `1` to also list `web_access_integrations` and
+`web_access_integration_run`; see [site integrations](#web_access_integrations-and-web_access_integration_run---site-integrations).
 
 ## Client Configuration
 
