@@ -116,8 +116,10 @@ sends writes. Releases of the npm package before `web_access_request` sent write
 ### `web_access_balance` - account balance
 
 The npm package also provides `web_access_balance`. Call it with no arguments to read your
-organization's USD `balance`, recorded `spent`, `held`, `remaining`, `exhausted` and `asOf`.
-The read is free and works when your balance is exhausted. `asOf` is query time; unrecorded
+organization's USD `balance`, recorded `spent`, `held`, `remaining`, `exhausted` and `asOf`,
+with its `plan` (`tier`, `name`, `priceUsdMonth`), its `autoTopUp` settings and `pricingUrl`,
+the public pricing page. `plan` and `autoTopUp` are left out when the account service does not
+report them. The read is free and works when your balance is exhausted. `asOf` is query time; unrecorded
 usage is excluded. Use the `exhausted` flag to check exhaustion, rather than deriving it
 from rounded monetary amounts. The snapshot is not a final invoice or a guarantee that a
 later request can run.
