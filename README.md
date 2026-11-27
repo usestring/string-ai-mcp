@@ -88,7 +88,7 @@ machine instead, see [Run it locally](#run-it-locally).
 | `web_access_interact`     | Run browser actions on a page (click, type, scroll, wait), then read the page they leave; billed as a browser session |
 | `web_access_product_help` | Ask about String products or services; get one source (two for comparisons), with a shared 4 KiB excerpt budget and source links |
 | `web_access_request`      | Send a POST, PUT or PATCH with a body to a URL                                  |
-| `web_access_search`       | Search the web: ranked results plus the knowledge panel, AI overview, local pack and other surfaces Google rendered; optional `searchCount` (1–300) pages Google; `searchType` searches Google's images, videos, shopping, books, places or forums tab; `safeSearch`, `includeOmittedResults`, `autocorrect`, `restrictCountry` and `verbatim` filter it; `page`, `dateRange` and `sortBy` refine a Google search; `format` is `"structured"` (JSON, the default and recommended) or `"raw"` (the Google results page as HTML, one page per call; `page` only, `searchCount` is rejected with raw) |
+| `web_access_search`       | Search the web: ranked results plus the knowledge panel, AI overview, local pack and other surfaces Google rendered; `country`, `language`, `location` and `coordinates` set where it runs from; `aiMode` asks Google AI Mode for one answer with its sources instead, and `aiOverview` fills a streamed AI Overview at twice the cost; optional `searchCount` (1–300) pages Google; `searchType` searches Google's images, videos, shopping, books, places or forums tab; `safeSearch`, `includeOmittedResults`, `autocorrect`, `restrictCountry` and `verbatim` filter it; `page`, `dateRange` and `sortBy` refine a Google search; `format` is `"structured"` (JSON, the default and recommended) or `"raw"` (the Google results page as HTML, one page per call; `page` only, `searchCount` is rejected with raw) |
 | `web_access_sitemap_quote` | Quote a crawl of one site: estimated pages and cost. Nothing is crawled or billed until the crawl starts |
 | `web_access_sitemap_start` | Start a quoted crawl after the user approves the quote; pages are billed as they are fetched |
 | `web_access_sitemap_status` | Check a crawl's progress, and read the URLs it found once it finishes |
@@ -100,22 +100,26 @@ The tools you get depend on where you connect:
 | Server | Tools |
 | --- | --- |
 | `https://mcp.usestring.ai` with no key | `web_access_fetch`, `web_access_search` and `web_access_product_help` |
+| The npm package, run locally with no key | The same three, within the same daily allowance; see [Without a key](#without-a-key) |
 | `https://mcp.usestring.ai?login`, or `https://mcp.usestring.ai` with an API key | Those three, plus `web_access_request`, `web_access_interact`, `web_access_sitemap_quote`, `web_access_sitemap_start`, `web_access_sitemap_status` and `web_access_balance` |
 | `https://mcp.usestring.ai/integration` | All of the above, plus `web_access_integrations` and `web_access_integration_run` |
-| The npm package, run locally | `web_access_fetch`, `web_access_search`, `web_access_product_help`, `web_access_balance`, `web_access_sitemap_quote`, `web_access_sitemap_start`, `web_access_sitemap_status`, the deprecated `web_access_sitemap` and `web_access_report` |
+| The npm package, run locally | `web_access_fetch`, `web_access_interact`, `web_access_search`, `web_access_product_help`, `web_access_balance`, `web_access_sitemap_quote`, `web_access_sitemap_start`, `web_access_sitemap_status`, the deprecated `web_access_sitemap` and `web_access_report` |
 
 `web_access_search`, `web_access_product_help`, `web_access_balance`, `web_access_sitemap_status`
-and `web_access_integrations` are read-only. So is `web_access_fetch` on the hosted server, where
-`web_access_interact` runs browser actions that can modify destination data and `web_access_request`
-sends writes. The npm package's fetch can send writes through `method` and `body`.
+and `web_access_integrations` are read-only. So is `web_access_fetch`, which sends only GET requests:
+`web_access_interact` runs browser actions that can modify destination data, and `web_access_request`
+sends writes. Releases of the npm package before `web_access_request` sent writes through fetch's
+`method` and `body`.
 `web_access_sitemap_start` and the npm package's `web_access_sitemap` start billed crawl jobs, and
 `web_access_integration_run` is billed to your account.
 
 ### `web_access_balance` - account balance
 
 The npm package also provides `web_access_balance`. Call it with no arguments to read your
-organization's USD `balance`, recorded `spent`, `held`, `remaining`, `exhausted` and `asOf`.
-The read is free and works when your balance is exhausted. `asOf` is query time; unrecorded
+organization's USD `balance`, recorded `spent`, `held`, `remaining`, `exhausted` and `asOf`,
+with its `plan` (`tier`, `name`, `priceUsdMonth`), its `autoTopUp` settings and `pricingUrl`,
+the public pricing page. `plan` and `autoTopUp` are left out when the account service does not
+report them. The read is free and works when your balance is exhausted. `asOf` is query time; unrecorded
 usage is excluded. Use the `exhausted` flag to check exhaustion, rather than deriving it
 from rounded monetary amounts. The snapshot is not a final invoice or a guarantee that a
 later request can run.
@@ -124,6 +128,17 @@ Balance checks count toward your organization's API rate limit alongside other r
 If you exceed the limit, the API returns `429 Too Many Requests`. See
 [rate limits](https://docs.usestring.ai/api-reference/rate-limits) for plan limits and
 retry guidance.
+
+### `web_access_integrations` and `web_access_integration_run` - site integrations
+
+Site integrations are maintained extractors for specific sites that return typed rows instead of a page.
+The npm package lists these two tools only when `STRING_INTEGRATIONS=1` is set in the server's environment,
+beside `STRING_API_KEY`, as the hosted server lists them only at `https://mcp.usestring.ai/integration`.
+
+- `web_access_integrations` reads the public catalog: `list` gives every site and its actions, and `describe`
+  gives one site's input and output schemas, examples, request band and billing. It is free.
+- `web_access_integration_run` runs one action on an `input` that matches its schema, and is billed to your
+  account by the action's `billing`. See [Making a request](https://docs.usestring.ai/sites/making-a-request).
 
 ### `web_access_sitemap_quote`, `web_access_sitemap_start`, `web_access_sitemap_status`
 
@@ -150,6 +165,15 @@ nothing is crawled or billed until the quote is explicitly approved.
 | `cancel`  | Stop a non-terminal job; already-fetched pages stay billed and readable.                            |
 | `list`    | The account's recent crawl jobs (`limit` ≤ 100 default 20, `offset`).                               |
 
+### `web_access_interact` — browser actions
+
+The npm package also provides `web_access_interact`, as the hosted server does. It opens `url` in a real browser
+session, runs `actions` in order (1 to 50 steps of `wait`, `click`, `write`, `press`, `scroll`, `navigate`, `hover`
+or `selectOption`), and returns the page as it stands after the last one: Markdown by default, its HTML with
+`format: "json"`. A failed step still returns the page, with `error` and `failedActionIndex` naming the step. Its
+annotations say a call can change data on the destination, so a client that follows them asks before each one. A call
+is billed as a browser session; see [Browser actions](https://docs.usestring.ai/fetch/browser-actions).
+
 ### `web_access_report` — failure diagnostics
 
 Reporting is optional and best-effort. Continue useful recovery first. If reporting remains useful
@@ -165,13 +189,30 @@ If reporting is unavailable, unauthorized, rate-limited, or fails, stop reportin
 
 ## Run it locally
 
-The npm package runs the server on your own machine over stdio. It needs a String API key.
+The npm package runs the server on your own machine over stdio. With a String API key, it lists the tools
+the table above gives for the npm package. Without one, it lists `web_access_fetch`, `web_access_search` and
+`web_access_product_help`; see [Without a key](#without-a-key).
 
 ### Run with npx
 
 ```bash
 env STRING_API_KEY=your-key npx @usestring/mcp
 ```
+
+Leave out `STRING_API_KEY` to try it without a key.
+
+### Without a key
+
+With no `STRING_API_KEY`, fetch and search call the Web Access API with no `Authorization` header, so they run
+within the API's [allowance without a key](https://docs.usestring.ai/get-started/authentication#without-a-key): a
+daily allowance per IP address that resets at 00:00 UTC. They take only the inputs that allowance accepts, and list
+only those: fetch takes `url`, `format` and `executeJS`, and search takes `query` and a few filters such as
+`dateRange` and `sortBy`. Any other input is refused before anything is sent. Product help reads String's public site
+and needs no key at all.
+
+When the allowance runs out, or the API is not serving requests without a key, the tool's error says so and where to
+sign up. Set `STRING_API_KEY` in the server's environment for the other tools, the other inputs and your account's own
+limits.
 
 ### Install globally
 
@@ -194,7 +235,10 @@ STRING_API_KEY=your-key node build/index.js
 
 | Variable             | Required | Description                       |
 | -------------------- | -------- | --------------------------------- |
-| `STRING_API_KEY`     | **Yes**  | Your String API key, from [String settings](https://portal.usestring.ai/settings). Read from 1.4.1 on. `STRING_AI_API_KEY`, the only name earlier releases read, still works, and wins when both are set. |
+| `STRING_API_KEY`     | No       | Your String API key, from [String settings](https://portal.usestring.ai/settings). Without it, only fetch, search and product help are listed; see [Without a key](#without-a-key). Read from 1.4.1 on. `STRING_AI_API_KEY`, the only name earlier releases read, still works, and wins when both are set. |
+
+`STRING_INTEGRATIONS`, optional: set it to `1` to also list `web_access_integrations` and
+`web_access_integration_run`; see [site integrations](#web_access_integrations-and-web_access_integration_run---site-integrations).
 
 ## Client Configuration
 
@@ -304,8 +348,8 @@ tool from the UI.
 2. When the LLM decides it needs web content, it invokes `web_access_fetch`,
    `web_access_search`, or the `web_access_sitemap_*` tools. Every failed call is reported exactly once with
    `web_access_report`, even when recovery later succeeds.
-3. This server forwards the request to String AI's Web Access API (using your API key from
-   the environment) and returns the result to the LLM.
+3. This server forwards the request to String AI's Web Access API (with your API key from
+   the environment, or without one within the free allowance) and returns the result to the LLM.
 
 ## About String AI
 

@@ -21,8 +21,8 @@
       "environmentVariables": [
         {
           "name": "STRING_AI_API_KEY",
-          "description": "Your String API key (get one at portal.usestring.ai)",
-          "isRequired": true,
+          "description": "Your String API key (get one at portal.usestring.ai). Without one, fetch and search run within a free daily allowance and the other tools are not listed.",
+          "isRequired": false,
           "isSecret": true
         }
       ]
