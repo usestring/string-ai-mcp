@@ -3,12 +3,10 @@ import { test } from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
-async function withClient(integrations, run) {
+async function withClient(run) {
   const client = new Client({ name: "integrations-test", version: "1" });
   const env = { ...process.env, STRING_API_KEY: "synthetic-integrations" };
   delete env.STRING_AI_API_KEY;
-  delete env.STRING_INTEGRATIONS;
-  if (integrations !== undefined) env.STRING_INTEGRATIONS = integrations;
   const transport = new StdioClientTransport({
     command: process.execPath,
     args: ["--import", "./tests/integrations-fixture.mjs", "build/index.js"],
@@ -35,14 +33,8 @@ const failure = (result) => {
 const integrations = (client, args) => client.callTool({ name: "web_access_integrations", arguments: args });
 const run = (client, args) => client.callTool({ name: "web_access_integration_run", arguments: args });
 
-test("the integration tools are listed only when STRING_INTEGRATIONS is 1, with the hosted annotations", async () => {
-  for (const unset of [undefined, "", "0", "no"]) {
-    await withClient(unset, async (client) => {
-      const names = (await client.listTools()).tools.map(({ name }) => name);
-      assert.ok(!names.includes("web_access_integrations") && !names.includes("web_access_integration_run"), `${unset}: ${names}`);
-    });
-  }
-  await withClient("1", async (client) => {
+test("the integration tools are listed with a key, with the hosted annotations", async () => {
+  await withClient(async (client) => {
     const { tools } = await client.listTools();
     const list = tools.find(({ name }) => name === "web_access_integrations");
     assert.deepEqual(list.annotations, { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true });
@@ -53,13 +45,10 @@ test("the integration tools are listed only when STRING_INTEGRATIONS is 1, with 
     assert.deepEqual(runTool.inputSchema.required, ["site", "action"]);
     assert.ok(tools.some(({ name }) => name === "web_access_fetch"));
   });
-  await withClient("TRUE", async (client) => {
-    assert.ok((await client.listTools()).tools.some(({ name }) => name === "web_access_integration_run"));
-  });
 });
 
 test("list and describe read the public manifest and return the hosted tool's fields", async () => {
-  await withClient("1", async (client) => {
+  await withClient(async (client) => {
     const listed = answer(await integrations(client, { action: "list" }));
     assert.equal(listed.summary, "2 integrations: examplesite (record, search); othersite (profile)");
     assert.deepEqual(Object.keys(listed.json), ["sites"]);
@@ -81,7 +70,7 @@ test("list and describe read the public manifest and return the hosted tool's fi
 });
 
 test("a run posts the input to the site's action and returns the envelope without its attempts", async () => {
-  await withClient("1", async (client) => {
+  await withClient(async (client) => {
     const ran = answer(await run(client, { site: "examplesite", action: "record", input: { items: ["abc", "not-a-record"] } }));
     assert.equal(ran.summary, "examplesite.record 1.2.0: 1 row, 1 failure, 2 requests; billed passthrough, 1 call");
     assert.deepEqual(Object.keys(ran.json), ["envelopeVersion", "integration", "data", "failures", "warnings", "requests", "billing", "traceId"]);
@@ -92,7 +81,7 @@ test("a run posts the input to the site's action and returns the envelope withou
 });
 
 test("a refused run names what to fix, and a run that failed whole carries its trace", async () => {
-  await withClient("1", async (client) => {
+  await withClient(async (client) => {
     assert.equal(
       failure(await run(client, { site: "examplesite", action: "record", input: { items: [1] } })),
       'web_access_integration_run failed: API request failed (400): Validation error: items.0: type: 1 has type "integer", want "string"; fix the input against the input schema web_access_integrations describe returns',
